@@ -2,9 +2,12 @@ package internal
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -15,23 +18,24 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-
 // Server оборачивает стандартный http.Server.
 type Server struct {
 	httpServer *http.Server
 	dbPool     *pgxpool.Pool
 	repo       *TripRepository
 	txManager  TxManager
+	idempRepo  *IdempotencyRepository
 }
 
 // NewServer создает и настраивает HTTP-сервер.
-func NewServer(cfg config.Config, dbPool *pgxpool.Pool, repo *TripRepository, txManager TxManager) *Server {
+func NewServer(cfg config.Config, dbPool *pgxpool.Pool, repo *TripRepository, txManager TxManager, idempRepo *IdempotencyRepository) *Server {
 	r := chi.NewRouter()
 
 	srv := &Server{ 
 		dbPool: dbPool,
 		repo: repo,
 		txManager: txManager,
+		idempRepo: idempRepo,
 	}
 
 	r.Get("/health", srv.Health)
@@ -78,6 +82,12 @@ func writeProblem(w http.ResponseWriter, r *http.Request, status int, code, titl
 	_ = json.NewEncoder(w).Encode(prob)
 }
 
+// hashBody хэширует тело запроса.
+func hashBody(body []byte) string {
+	hash := sha256.Sum256(body)
+	return hex.EncodeToString(hash[:])
+}
+
 // Health GET /health
 func (s *Server) Health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -104,9 +114,39 @@ func (s *Server) Ready(w http.ResponseWriter, r *http.Request) {
 
 // CreateTrip POST /api/v1/trips
 func (s *Server) CreateTrip(w http.ResponseWriter, r *http.Request, params api.CreateTripParams) {
+	idempotencyKey := r.Header.Get("Idempotency-Key")
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "Invalid Request", "Failed to read body")
+		return
+	}
+
+	// проверка на наличие ключа идемпотентности
+	if idempotencyKey != "" {
+		existing, err := s.idempRepo.Get(r.Context(), idempotencyKey)
+		if err != nil {
+			writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal Error", "Idempotency check failed")
+			return
+		}
+
+		if existing != nil {
+			reqHash := hashBody(bodyBytes)
+			if existing.RequestHash != reqHash {
+				writeProblem(w, r, http.StatusConflict, "idempotency_conflict", "Idempotency Conflict", "Idempotency key already used with different request body")
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(existing.ResponseCode)
+			_, _ = w.Write(existing.ResponseBody)
+			return
+		}
+	}
+
 	var req api.CreateTripJSONRequestBody
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "Invalid Request", "Invalid JSON body")
 		return
 	}
@@ -142,7 +182,7 @@ func (s *Server) CreateTrip(w http.ResponseWriter, r *http.Request, params api.C
 	}
 
 	// создание поездки
-	err := s.txManager.Do(r.Context(), func(ctx context.Context) error {
+	err = s.txManager.Do(r.Context(), func(ctx context.Context) error {
 		return s.repo.Create(ctx, tripModel)
 	})
 
@@ -153,6 +193,20 @@ func (s *Server) CreateTrip(w http.ResponseWriter, r *http.Request, params api.C
 		}
 		writeProblem(w, r, http.StatusInternalServerError, "internal_error", "Internal Error", "Failed to create trip")
 		return
+	}
+
+	respObj := mapTripToAPI(tripModel)
+	respBody, _ := json.Marshal(respObj)
+
+	if idempotencyKey != "" {
+		reqHash := hashBody(bodyBytes)
+		_ = s.idempRepo.Save(r.Context(), &IdempotencyRecord{
+			Key:          idempotencyKey,
+			RequestHash:  reqHash,
+			ResponseCode: http.StatusOK,
+			ResponseBody: respBody,
+
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
