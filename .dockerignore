@@ -1,0 +1,28 @@
+# Системные файлы и конфигурации IDE.
+.git
+.gitignore
+.idea
+.vscode
+*.swp
+*.DS_Store
+
+# Локальные секреты.
+*.env
+.env*
+*.pem
+*.key
+
+# Тесты, документация
+*_test.go
+docs/
+*.md
+
+# Локальные бинарники и временные папки.
+tmp/
+bin/
+dist/
+
+# Файлы развертывания.
+deploy/
+Dockerfile*
+docker-compose*

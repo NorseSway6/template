@@ -34,10 +34,11 @@ func main() {
 	defer db.Close()
 
 	tripRepo := internal.NewTripRepository(db)
+	idempRepo := internal.NewIdempotencyRepository(db)
 	txManager := internal.NewTxManager(db)
 
 	// инициализация сервера
-	srv := internal.NewServer(cfg, db ,tripRepo, txManager)
+	srv := internal.NewServer(cfg, db ,tripRepo, txManager, idempRepo)
 
 	// запуск сервера
 	go func() {
