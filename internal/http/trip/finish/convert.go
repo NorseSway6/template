@@ -3,9 +3,10 @@ package finish
 import (
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/NorseSway6/template.git/internal/domain/trip"
 	api "github.com/NorseSway6/template.git/internal/generated"
-	"github.com/google/uuid"
 )
 
 func toAPI(t *trip.Trip) (api.Trip, error) {

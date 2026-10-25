@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os/signal"
 	"syscall"
@@ -11,9 +12,15 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	cfg, err := config.LoadAndValidateConfig()
 	if err != nil {
-		log.Fatal("load config: %w", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -21,9 +28,9 @@ func main() {
 
 	c, err := container.New(ctx, cfg)
 	if err != nil {
-		log.Fatal("build container: %w", err)
+		return fmt.Errorf("build container: %w", err)
 	}
 	defer c.Close()
 
-	c.Run(ctx)
+	return c.Run(ctx)
 }

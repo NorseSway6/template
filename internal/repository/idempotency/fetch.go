@@ -6,9 +6,10 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/NorseSway6/template.git/internal/infra/postgres/transaction"
 	"github.com/NorseSway6/template.git/internal/model"
-	"github.com/jackc/pgx/v5"
 )
 
 // Get извлекает запись идемпотентности из базы данных по ключу.

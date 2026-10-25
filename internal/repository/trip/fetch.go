@@ -6,9 +6,10 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
+
 	"github.com/NorseSway6/template.git/internal/domain/trip"
 	"github.com/NorseSway6/template.git/internal/infra/postgres/transaction"
-	"github.com/jackc/pgx/v5"
 )
 
 // GetByID получает поездку по tripID.
@@ -25,7 +26,6 @@ func (r *Repository) GetByID(ctx context.Context, tripID string) (*trip.Trip, er
 		From("trips").
 		Where(squirrel.Eq{"id": tripID}).
 		ToSql()
-
 	if err != nil {
 		return nil, fmt.Errorf("build select trip sql: %w", err)
 	}
@@ -38,7 +38,6 @@ func (r *Repository) GetByID(ctx context.Context, tripID string) (*trip.Trip, er
 		&row.Price, &row.Status, &row.StartedAt, &row.FinishedAt,
 		&row.CreatedAt, &row.UpdatedAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, trip.ErrTripNotFound

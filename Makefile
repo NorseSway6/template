@@ -9,8 +9,9 @@ IMAGE_NAME := tripgo-app
 CONTAINER_NAME := tripgo_app
 PORT := 8080
 
-.PHONY: generate run migrate migrate-down migrate-status migrate-create test \
-	env-start env-stop env-status env-connect docker-build docker-run docker-stop
+.PHONY: generate run migrate-up migrate-down migrate-status migarte-create \
+	env-start env-stop env-status env-connect docker-build docker-run docker-stop \
+	lint lint-fix
 
 generate:
 	go tool oapi-codegen \
@@ -63,3 +64,8 @@ docker-run:
 docker-stop:
 	docker rm -f $(CONTAINER_NAME) 2>/dev/null || true
 
+lint:
+	golangci-lint run
+
+lint-fix:
+	golangci-lint run --fix

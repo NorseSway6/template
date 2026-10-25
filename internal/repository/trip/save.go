@@ -6,9 +6,10 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/NorseSway6/template.git/internal/domain/trip"
 	"github.com/NorseSway6/template.git/internal/infra/postgres/transaction"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Create создает новую поездку и пишет в журнал переходов статуса.

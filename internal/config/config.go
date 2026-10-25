@@ -10,19 +10,18 @@ import (
 // Config хранит настройки сервиса.
 type Config struct {
 	HttpAddr                string
-	HttpReadHeaderTimeout   time.Duration
-	HttpReadTimeout         time.Duration
-	HttpWriteTimeout        time.Duration
-	HttpIdleTimeout         time.Duration
 	LogLevel                string
-	ShutdownTimeout         time.Duration
 	DatabaseURL             string
 	DatabaseMaxConns        int32
 	DatabaseMinConns        int32
 	DatabaseMaxConnLifetime time.Duration
 	DatabaseConnectTimeout  time.Duration
 	DatabaseQueryTimeout    time.Duration
-	DatabasePingTimeout     time.Duration
+	ShutdownTimeout         time.Duration
+	HTTPReadHeaderTimeout   time.Duration
+	HTTPReadTimeout         time.Duration
+	HTTPWriteTimeout        time.Duration
+	HTTPIdleTimeout         time.Duration
 }
 
 // LoadConfig загружает из .env конфигурацию и валидирует.
@@ -35,28 +34,6 @@ func LoadAndValidateConfig() (Config, error) {
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
 		return Config{}, fmt.Errorf("LOG_LEVEL is required")
-	}
-
-	shutdownTimeout, err := parseDurationEnvVar("SHUTDOWN_TIMEOUT")
-	if err != nil {
-		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
-	}
-
-	httpReadHeaderTimeout, err := parseDurationEnvVar("HTTP_READ_HEADER_TIMEOUT")
-	if err != nil {
-		return Config{}, err
-	}
-	httpReadTimeout, err := parseDurationEnvVar("HTTP_READ_TIMEOUT")
-	if err != nil {
-		return Config{}, err
-	}
-	httpWriteTimeout, err := parseDurationEnvVar("HTTP_WRITE_TIMEOUT")
-	if err != nil {
-		return Config{}, err
-	}
-	httpIdleTimeout, err := parseDurationEnvVar("HTTP_IDLE_TIMEOUT")
-	if err != nil {
-		return Config{}, err
 	}
 
 	databaseURL := os.Getenv("DATABASE_URL")
@@ -99,26 +76,51 @@ func LoadAndValidateConfig() (Config, error) {
 		return Config{}, err
 	}
 
+	shutdownTimeout, err := parseDurationEnvVar("SHUTDOWN_TIMEOUT")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
+	}
+
+	readHeaderTimeout, err := parseDurationEnvVar("HTTP_READ_HEADER_TIMEOUT")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
+	}
+
+	readTimeout, err := parseDurationEnvVar("HTTP_READ_TIMEOUT")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
+	}
+
+	writeTimeout, err := parseDurationEnvVar("HTTP_WRITE_TIMEOUT")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
+	}
+
+	idleTimeout, err := parseDurationEnvVar("HTTP_IDLE_TIMEOUT")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
+	}
+
 	cfg := Config{
 		HttpAddr:                httpAddr,
-		HttpReadHeaderTimeout:   httpReadHeaderTimeout,
-		HttpReadTimeout:         httpReadTimeout,
-		HttpWriteTimeout:        httpWriteTimeout,
-		HttpIdleTimeout:         httpIdleTimeout,
 		LogLevel:                logLevel,
-		ShutdownTimeout:         shutdownTimeout,
 		DatabaseURL:             databaseURL,
 		DatabaseMaxConns:        databaseMaxConns,
 		DatabaseMinConns:        databaseMinConns,
 		DatabaseMaxConnLifetime: databaseMaxConnsLifetime,
 		DatabaseConnectTimeout:  databaseConnectTimeout,
 		DatabaseQueryTimeout:    databaseQueryTimeout,
-		DatabasePingTimeout:     databasePingTimeout,
+		ShutdownTimeout:         shutdownTimeout,
+		HTTPReadHeaderTimeout:   readHeaderTimeout,
+		HTTPReadTimeout:         readTimeout,
+		HTTPWriteTimeout:        writeTimeout,
+		HTTPIdleTimeout:         idleTimeout,
 	}
 
 	return cfg, nil
 }
 
+// parseDurationEnvVar парсит переменную окружения в time.Duration.
 func parseDurationEnvVar(envVar string) (time.Duration, error) {
 	durationStr := os.Getenv(envVar)
 	if durationStr == "" {
@@ -140,6 +142,7 @@ func parsePositiveDuration(envVar, durationStr string) (time.Duration, error) {
 	return duration, nil
 }
 
+// parseIntEnvVar парсит переменную окружения в int32.
 func parseIntEnvVar(envVar string) (int32, error) {
 	intStr := os.Getenv(envVar)
 	if intStr == "" {

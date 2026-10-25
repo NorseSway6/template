@@ -3,10 +3,11 @@ package create
 import (
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/NorseSway6/template.git/internal/domain/trip"
 	api "github.com/NorseSway6/template.git/internal/generated"
 	"github.com/NorseSway6/template.git/internal/model"
-	"github.com/google/uuid"
 )
 
 func toInput(req api.CreateTripJSONRequestBody) model.CreateTripInput {

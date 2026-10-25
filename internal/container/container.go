@@ -67,10 +67,10 @@ func New(ctx context.Context, cfg config.Config) (*Container, error) {
 		server: &http.Server{
 			Addr:              cfg.HttpAddr,
 			Handler:           srv.Handler(),
-			ReadHeaderTimeout: 2 * time.Second,
-			ReadTimeout:       5 * time.Second,
-			WriteTimeout:      10 * time.Second,
-			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
+			ReadTimeout:       cfg.HTTPReadTimeout,
+			WriteTimeout:      cfg.HTTPWriteTimeout,
+			IdleTimeout:       cfg.HTTPIdleTimeout,
 		},
 	}, nil
 }

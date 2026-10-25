@@ -6,8 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	api "github.com/NorseSway6/template.git/internal/generated"
 	"github.com/go-chi/chi/v5"
+
+	api "github.com/NorseSway6/template.git/internal/generated"
 )
 
 type Server struct {
@@ -19,7 +20,7 @@ type Server struct {
 }
 
 func NewServer(c createHandler, g getHandler, f finishHandler, i idempotency, db pinger) *Server {
-	return &Server{create: c, get: g, finish: f, idem: i}
+	return &Server{create: c, get: g, finish: f, idem: i, db: db}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -61,6 +62,7 @@ func (s *Server) CreateTrip(w http.ResponseWriter, r *http.Request, p api.Create
 func (s *Server) GetTrip(w http.ResponseWriter, r *http.Request, id api.TripId) {
 	s.get.Get(w, r, id)
 }
+
 func (s *Server) FinishTrip(w http.ResponseWriter, r *http.Request, id api.TripId) {
 	s.finish.Finish(w, r, id)
 }
