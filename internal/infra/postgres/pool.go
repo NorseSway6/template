@@ -1,4 +1,4 @@
-package internal
+package postgres
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 // NewPool создает пулл соединений с базой.
-func NewPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error){
+func NewPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database url: %w", err)
@@ -23,7 +23,7 @@ func NewPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error){
 	if err != nil {
 		return nil, fmt.Errorf("failed to create db pool: %w", err)
 	}
-	
+
 	pingCtx, cancel := context.WithTimeout(ctx, cfg.DatabaseConnectTimeout)
 	defer cancel()
 
