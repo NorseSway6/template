@@ -1,9 +1,8 @@
-package internal
+package transaction
 
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,25 +16,18 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// TxManager определяет контракт менеджера транзакций.
-type TxManager interface {
-	Do(ctx context.Context, fn func(ctx context.Context) error) error
-}
-
-// key является типом для ключа контекста, чтобы избежать коллизий.
+// txKey является типом для ключа контекста, чтобы избежать коллизий.
 type txKey struct{}
 
-// txManager хранит ссылку на пулл соединений.
-type txManager struct {
-	pool         *pgxpool.Pool
-	queryTimeout time.Duration
+// TxManager хранит ссылку на пулл соединений.
+type TxManager struct {
+	pool *pgxpool.Pool
 }
 
-// NewTxManager создает новый экземпляр менеджера транзакций.
-func NewTxManager(pool *pgxpool.Pool, queryTimeout time.Duration) TxManager {
-	return &txManager{
-		pool:         pool,
-		queryTimeout: queryTimeout,
+// New создает новый экземпляр TxManager.
+func New(pool *pgxpool.Pool) *TxManager {
+	return &TxManager{
+		pool: pool,
 	}
 }
 
@@ -48,10 +40,7 @@ func GetExecutor(ctx context.Context, pool *pgxpool.Pool) DBTX {
 }
 
 // Do выполняет переданную функцию fn внутри транзакции.
-func (m *txManager) Do(ctx context.Context, fn func(ctx context.Context) error) (err error) {
-	ctx, cancel := context.WithTimeout(ctx, m.queryTimeout)
-	defer cancel()
-
+func (m *TxManager) Do(ctx context.Context, fn func(ctx context.Context) error) (err error) {
 	// проверка на отсутствие открытых транзакций
 	if _, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return fn(ctx)
