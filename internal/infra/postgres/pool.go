@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/NorseSway6/template.git/internal/config"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/NorseSway6/template.git/internal/config"
 )
 
 // NewPool создает пулл соединений с базой.

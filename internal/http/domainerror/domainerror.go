@@ -40,11 +40,11 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 // problem создает Problem.
-func problem(status int, code, title, detail string) (int, api.Problem) {
-	return status, api.Problem{
+func problem(status int32, code, title, detail string) (int, api.Problem) {
+	return int(status), api.Problem{
 		Type:   code,
 		Title:  title,
-		Status: int32(status),
+		Status: status,
 		Detail: &detail,
 		Code:   code,
 	}
