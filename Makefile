@@ -11,7 +11,7 @@ PORT := 8080
 
 .PHONY: generate run migrate-up migrate-down migrate-status migarte-create \
 	env-start env-stop env-status env-connect docker-build docker-run docker-stop \
-	lint lint-fix
+	lint lint-fix test test-integration
 
 generate:
 	go tool oapi-codegen \
@@ -66,3 +66,9 @@ lint:
 
 lint-fix:
 	golangci-lint run --fix
+
+test:
+	go test -v -race -cover ./...
+
+test-integration:
+	go test -v -race -count=2 -tags=integration ./internal/repository/trip

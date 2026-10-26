@@ -1,28 +1,35 @@
 # TripGO
+
 TripGo — MVP сервиса такси. Пассажир выбирает водителя и создаёт поездку. Пока поездка активна, устройство водителя шлёт координаты, чтобы потом можно было посмотреть маршрут. В конце водитель завершает поездку.
 
 ## Запуск
+
 Запустить проект можно одним из двух способов.
 
 Для обоих случаев нужна установленная утилита tripgoctl и запущенный кластер:
+
 ```bash
 tripgoctl cluster start
 ```
 
 Запуск с помощью tripgoctl:
+
 ```bash
 make env-start
 make env-connect
 ```
 
 Запуск с помощью docker:
+
 ```bash
 make docker-build
 make docker-run
 ```
+
 Вес собираемого образа: 4.68MB.
 
 ## Переменные env
+
 ```bash
 HTTP_ADDR=:8080
 LOG_LEVEL=info
@@ -33,11 +40,28 @@ DATABASE_MIN_CONNS=2
 DATABASE_MAX_CONN_LIFETIME=30m
 DATABASE_CONNECT_TIMEOUT=5s
 DATABASE_QUERY_TIMEOUT=3s
+OTEL_SERVICE_NAME=trip-service
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:22318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_RESOURCE_ATTRIBUTES=service.namespace=tripgo,deployment.environment=local
+OTEL_TRACES_SAMPLER=parentbased_always_on
+HTTP_READ_HEADER_TIMEOUT=2s
+HTTP_READ_TIMEOUT=5s
+HTTP_WRITE_TIMEOUT=10s
+HTTP_IDLE_TIMEOUT=30s
+```
+
+## Тестирование
+
+```bash
+make test
+make test-integration
 ```
 
 ## Сделано
 
 **ЛР1:**
+
 - Создана структура репозитория
 - Сделана конфигурация из окружения
 - Поднят HTTP-сервер на net/http с роутером chi
@@ -47,7 +71,7 @@ DATABASE_QUERY_TIMEOUT=3s
 - Реализован репозитории на pgx + squirrel
 - Реализован менеджер транзакций
 - Реализовать три ручки по контракту + служебные ручки
-- Реализована идемпотентноть (*)
+- Реализована идемпотентноть (\*)
 - Написан Dockerfile с запуском рядом с БД.
 
 ## Решения
