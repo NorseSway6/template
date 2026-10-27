@@ -9,19 +9,20 @@ import (
 
 // Config хранит настройки сервиса.
 type Config struct {
-	HttpAddr                string
-	LogLevel                string
-	DatabaseURL             string
-	DatabaseMaxConns        int32
-	DatabaseMinConns        int32
-	DatabaseMaxConnLifetime time.Duration
-	DatabaseConnectTimeout  time.Duration
-	DatabaseQueryTimeout    time.Duration
-	ShutdownTimeout         time.Duration
-	HTTPReadHeaderTimeout   time.Duration
-	HTTPReadTimeout         time.Duration
-	HTTPWriteTimeout        time.Duration
-	HTTPIdleTimeout         time.Duration
+	HttpAddr                 string
+	LogLevel                 string
+	DatabaseURL              string
+	DatabaseMaxConns         int32
+	DatabaseMinConns         int32
+	DatabaseMaxConnLifetime  time.Duration
+	DatabaseConnectTimeout   time.Duration
+	DatabaseQueryTimeout     time.Duration
+	ShutdownTimeout          time.Duration
+	HTTPReadHeaderTimeout    time.Duration
+	HTTPReadTimeout          time.Duration
+	HTTPWriteTimeout         time.Duration
+	HTTPIdleTimeout          time.Duration
+	TelemetryShutdownTimeout time.Duration
 }
 
 // LoadConfig загружает из .env конфигурацию и валидирует.
@@ -91,20 +92,26 @@ func LoadAndValidateConfig() (Config, error) {
 		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
 	}
 
+	telemetryShutdownTimeout, err := parseDurationEnvVar("TELEMETRY_SHUTDOWN_TIMEOUT")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
+	}
+
 	cfg := Config{
-		HttpAddr:                httpAddr,
-		LogLevel:                logLevel,
-		DatabaseURL:             databaseURL,
-		DatabaseMaxConns:        databaseMaxConns,
-		DatabaseMinConns:        databaseMinConns,
-		DatabaseMaxConnLifetime: databaseMaxConnsLifetime,
-		DatabaseConnectTimeout:  databaseConnectTimeout,
-		DatabaseQueryTimeout:    databaseQueryTimeout,
-		ShutdownTimeout:         shutdownTimeout,
-		HTTPReadHeaderTimeout:   readHeaderTimeout,
-		HTTPReadTimeout:         readTimeout,
-		HTTPWriteTimeout:        writeTimeout,
-		HTTPIdleTimeout:         idleTimeout,
+		HttpAddr:                 httpAddr,
+		LogLevel:                 logLevel,
+		DatabaseURL:              databaseURL,
+		DatabaseMaxConns:         databaseMaxConns,
+		DatabaseMinConns:         databaseMinConns,
+		DatabaseMaxConnLifetime:  databaseMaxConnsLifetime,
+		DatabaseConnectTimeout:   databaseConnectTimeout,
+		DatabaseQueryTimeout:     databaseQueryTimeout,
+		ShutdownTimeout:          shutdownTimeout,
+		HTTPReadHeaderTimeout:    readHeaderTimeout,
+		HTTPReadTimeout:          readTimeout,
+		HTTPWriteTimeout:         writeTimeout,
+		HTTPIdleTimeout:          idleTimeout,
+		TelemetryShutdownTimeout: telemetryShutdownTimeout,
 	}
 
 	return cfg, nil
