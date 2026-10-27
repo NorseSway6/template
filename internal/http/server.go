@@ -3,28 +3,38 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	api "github.com/NorseSway6/template.git/internal/generated"
+	middleware "github.com/NorseSway6/template.git/internal/http/middleware"
 )
 
 type Server struct {
-	create createHandler
-	get    getHandler
-	finish finishHandler
-	idem   idempotency
-	db     pinger
+	create  createHandler
+	get     getHandler
+	finish  finishHandler
+	idem    idempotency
+	db      pinger
+	log     *slog.Logger
+	metrics *middleware.Metrics
 }
 
-func NewServer(c createHandler, g getHandler, f finishHandler, i idempotency, db pinger) *Server {
-	return &Server{create: c, get: g, finish: f, idem: i, db: db}
+func NewServer(c createHandler, g getHandler, f finishHandler, i idempotency, db pinger, log *slog.Logger, metrics *middleware.Metrics) *Server {
+	return &Server{create: c, get: g, finish: f, idem: i, db: db, log: log, metrics: metrics}
 }
 
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
+	r.Use(
+		middleware.Recover(s.log),
+		middleware.Tracing,
+		middleware.Logging(s.log),
+		s.metrics.Middleware,
+	)
 	r.Get("/health", s.Health)
 	r.Get("/ready", s.Ready)
 	api.HandlerFromMux(s, r)

@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/NorseSway6/template.git/internal/domain/trip"
@@ -10,15 +11,17 @@ import (
 
 // Usecase представляет бизнес-логику для создания поездки.
 type Usecase struct {
-	repo  tripRepository
-	tx    txManager
-	now   func() time.Time
-	newID func() string
+	repo    tripRepository
+	tx      txManager
+	metrics metrics
+	logger  *slog.Logger
+	now     func() time.Time
+	newID   func() string
 }
 
 // New создает новый экземпляр Usecase.
-func New(repo tripRepository, txManager txManager, now func() time.Time, newID func() string) *Usecase {
-	return &Usecase{repo: repo, tx: txManager, now: now, newID: newID}
+func New(repo tripRepository, txManager txManager, now func() time.Time, newID func() string, metrics metrics, logger *slog.Logger) *Usecase {
+	return &Usecase{repo: repo, tx: txManager, now: now, newID: newID, metrics: metrics, logger: logger}
 }
 
 // Do создает новую поездку на основе входных данных.
@@ -34,6 +37,12 @@ func (u *Usecase) Do(ctx context.Context, in model.CreateTripInput) (*trip.Trip,
 	if err != nil {
 		return nil, err
 	}
+
+	u.metrics.TripCreated()
+	u.logger.InfoContext(ctx, "trip created",
+		"event", "trip.created",
+		"trip_id", t.ID,
+	)
 
 	return t, nil
 }
