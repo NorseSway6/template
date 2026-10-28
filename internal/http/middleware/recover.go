@@ -9,10 +9,11 @@ import (
 	"runtime/debug"
 	"sync"
 
-	"github.com/NorseSway6/template.git/internal/http/domainerror"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/NorseSway6/template.git/internal/http/domainerror"
 )
 
 type recoveryContextKey struct{}
@@ -50,6 +51,7 @@ func (s *recoveryState) complete(status int) {
 	}
 }
 
+// Recover возвращает middleware, который перехватывает паники в обработчиках HTTP-запросов, логирует их и возвращает клиенту ошибку 500 Internal Server Error.
 func Recover(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

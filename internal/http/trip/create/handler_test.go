@@ -10,23 +10,26 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/NorseSway6/template.git/internal/domain/trip"
 	api "github.com/NorseSway6/template.git/internal/generated"
 	"github.com/NorseSway6/template.git/internal/model"
-	"go.uber.org/mock/gomock"
 )
 
 func TestHandlerCreate(t *testing.T) {
+	t.Parallel()
+
 	validBody := `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10,"longitude":20},"end_point":{"latitude":30,"longitude":40},"price":1500}`
 	validTrip := &trip.Trip{
-		ID:       "33333333-3333-3333-3333-333333333333",
-		UserID:   "11111111-1111-1111-1111-111111111111",
-		DriverID: "22222222-2222-2222-2222-222222222222",
-		Status:   trip.StatusActive,
-		Price:    1500,
+		ID:         "33333333-3333-3333-3333-333333333333",
+		UserID:     "11111111-1111-1111-1111-111111111111",
+		DriverID:   "22222222-2222-2222-2222-222222222222",
+		Status:     trip.StatusActive,
+		Price:      1500,
 		StartPoint: trip.Point{Latitude: 10, Longitude: 20},
 		EndPoint:   trip.Point{Latitude: 30, Longitude: 40},
-		StartedAt: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+		StartedAt:  time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
 	}
 
 	t.Run("success", func(t *testing.T) {

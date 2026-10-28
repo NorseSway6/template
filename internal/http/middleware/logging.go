@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Logging представляет middleware для логирования HTTP-запросов.
 func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +36,7 @@ func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// logRequest записывает информацию о запросе в лог.
 func logRequest(log *slog.Logger, r *http.Request, status int, duration time.Duration) {
 	level := slog.LevelInfo
 	if status >= http.StatusInternalServerError {

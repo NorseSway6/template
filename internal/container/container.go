@@ -31,7 +31,6 @@ import (
 // Container собирает зависимости сервиса и управляет его жизненным циклом.
 type Container struct {
 	cfg          config.Config
-	logger       *slog.Logger
 	pool         *pgxpool.Pool
 	server       *http.Server
 	shutdownOTel func(context.Context) error
@@ -80,9 +79,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, shutdownOT
 	)
 
 	return &Container{
-		cfg:    cfg,
-		logger: logger,
-		pool:   pool,
+		cfg:  cfg,
+		pool: pool,
 		server: &http.Server{
 			Addr:              cfg.HttpAddr,
 			Handler:           srv.Handler(),

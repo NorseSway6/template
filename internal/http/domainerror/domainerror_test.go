@@ -8,10 +8,12 @@ import (
 )
 
 func TestProblem(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name     string
-		err      error
-		wantCode string
+		name           string
+		err            error
+		wantCode       string
 		wantCodeStatus int
 	}{
 		{name: "validation", err: &trip.ValidationError{Field: "body", Reason: "invalid JSON"}, wantCode: "invalid_request", wantCodeStatus: http.StatusBadRequest},
@@ -23,6 +25,8 @@ func TestProblem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			status, body := Problem(tt.err)
 			if status != tt.wantCodeStatus {
 				t.Fatalf("status = %d, want %d", status, tt.wantCodeStatus)

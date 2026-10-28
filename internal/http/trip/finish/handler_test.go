@@ -9,13 +9,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/NorseSway6/template.git/internal/domain/trip"
-	api "github.com/NorseSway6/template.git/internal/generated"
 	"go.uber.org/mock/gomock"
+
+	"github.com/NorseSway6/template.git/internal/domain/trip"
 )
 
 func TestHandlerFinish(t *testing.T) {
-	tripID := api.TripId(uuid.MustParse("33333333-3333-3333-3333-333333333333"))
+	t.Parallel()
+
+	tripID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
 	userID := "11111111-1111-1111-1111-111111111111"
 	driverID := "22222222-2222-2222-2222-222222222222"
 
