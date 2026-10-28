@@ -10,7 +10,8 @@ CONTAINER_NAME := tripgo_app
 PORT := 8080
 
 .PHONY: generate run migrate-up migrate-down migrate-status migarte-create \
-	env-start env-stop env-status env-connect docker-build docker-run docker-stop
+	env-start env-stop env-status env-connect docker-build docker-run docker-stop \
+	lint lint-fix test test-integration test-mutation
 
 generate:
 	go tool oapi-codegen \
@@ -59,4 +60,20 @@ docker-run:
 
 docker-stop:
 	docker rm -f $(CONTAINER_NAME) 2>/dev/null || true
+
+lint:
+	golangci-lint run
+
+lint-fix:
+	golangci-lint run --fix
+
+test:
+	go test -v -race -cover ./...
+
+test-integration:
+	go test -v -race -count=2 -tags=integration ./internal/repository/trip
+
+test-mutation:
+	gremlins unleash ./internal/domain --timeout-coefficient 20
+	gremlins unleash ./internal/usecase --timeout-coefficient 20
 

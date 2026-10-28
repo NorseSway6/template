@@ -3,55 +3,52 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
-	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/NorseSway6/template.git/internal"
 	"github.com/NorseSway6/template.git/internal/config"
+	"github.com/NorseSway6/template.git/internal/container"
+	"github.com/NorseSway6/template.git/internal/infra/telemetry"
 )
 
 func main() {
-	// загрузка конфигурации
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	logger, shutdownOTel, err := telemetry.Setup(ctx, "trip-service")
+	if err != nil {
+		if logger != nil {
+			logger.ErrorContext(ctx, "telemetry setup failed", "error", err)
+		}
+		return err
+	}
+
 	cfg, err := config.LoadAndValidateConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		logger.ErrorContext(ctx, "configuration load failed", "error", err)
+		return errors.Join(err, shutdownOTel(ctx))
 	}
 
-	ctx, stop := signal.NotifyContext(
-		context.Background(),
-		syscall.SIGINT,
-		syscall.SIGTERM,
-	)
-	defer stop()
-	
-	// подключение к бд
-	db, err := internal.NewPool(ctx, cfg)
-	if err != nil{
-		log.Fatalf("database connection failed: %v", err)
+	c, err := container.New(ctx, cfg, logger, shutdownOTel)
+	if err != nil {
+		logger.ErrorContext(ctx, "service initialization failed", "error", err)
+		return errors.Join(err, shutdownOTel(ctx))
 	}
-	defer db.Close()
 
-	tripRepo := internal.NewTripRepository(db)
-	idempRepo := internal.NewIdempotencyRepository(db)
-	txManager := internal.NewTxManager(db)
-
-	// инициализация сервера
-	srv := internal.NewServer(cfg, db ,tripRepo, txManager, idempRepo)
-
-	// запуск сервера
-	go func() {
-		log.Printf("listening on %s", cfg.HttpAddr)
-		if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server listen error: %v", err)
-		}
-	}()
-
-	<-ctx.Done()
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
-
-	srv.Shutdown(shutdownCtx)
+	runErr := c.Run(ctx)
+	closeErr := c.Close()
+	if runErr != nil {
+		logger.ErrorContext(ctx, "HTTP server stopped unexpectedly", "error", runErr)
+	}
+	if closeErr != nil {
+		logger.ErrorContext(ctx, "service shutdown failed", "error", closeErr)
+	}
+	return errors.Join(runErr, closeErr)
 }
