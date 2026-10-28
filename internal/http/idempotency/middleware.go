@@ -56,7 +56,7 @@ func (m *Middleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(existing.ResponseCode)
-			_, _ = w.Write(existing.ResponseBody)
+			_, _ = w.Write(existing.ResponseBody) //nolint:gosec // Воспроизводит JSON, ранее созданный этим сервисом.
 			return
 		}
 

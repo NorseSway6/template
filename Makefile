@@ -11,7 +11,7 @@ PORT := 8080
 
 .PHONY: generate run migrate-up migrate-down migrate-status migarte-create \
 	env-start env-stop env-status env-connect docker-build docker-run docker-stop \
-	lint lint-fix test test-integration
+	lint lint-fix test test-integration test-mutation
 
 generate:
 	go tool oapi-codegen \
@@ -72,3 +72,8 @@ test:
 
 test-integration:
 	go test -v -race -count=2 -tags=integration ./internal/repository/trip
+
+test-mutation:
+	gremlins unleash ./internal/domain --timeout-coefficient 20
+	gremlins unleash ./internal/usecase --timeout-coefficient 20
+

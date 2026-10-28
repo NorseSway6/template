@@ -10,11 +10,13 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+// Metrics представляет middleware для сбора метрик HTTP-запросов.
 type Metrics struct {
 	duration metric.Float64Histogram
 	active   metric.Int64UpDownCounter
 }
 
+// NewMetrics создает новый экземпляр Metrics с инициализацией необходимых метрик.
 func NewMetrics() (*Metrics, error) {
 	meter := otel.Meter("github.com/NorseSway6/template.git/internal/http/middleware")
 
@@ -35,6 +37,7 @@ func NewMetrics() (*Metrics, error) {
 	return &Metrics{duration: duration, active: active}, nil
 }
 
+// Middleware возвращает middleware для сбора метрик HTTP-запросов.
 func (m *Metrics) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

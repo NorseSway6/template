@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/NorseSway6/template.git/internal/domain/trip"
 	"github.com/NorseSway6/template.git/internal/infra/telemetry"
-	"go.uber.org/mock/gomock"
 )
 
 type mockMetrics struct {

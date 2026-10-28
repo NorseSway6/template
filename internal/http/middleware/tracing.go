@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Tracing возвращает middleware, который создает и настраивает спаны для каждого HTTP-запроса.
 func Tracing(next http.Handler) http.Handler {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)

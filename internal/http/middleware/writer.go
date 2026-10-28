@@ -8,10 +8,12 @@ type statusWriter struct {
 	wroteHeader bool
 }
 
+// newStatusWriter создает новый экземпляр statusWriter, оборачивая переданный http.ResponseWriter.
 func newStatusWriter(w http.ResponseWriter) *statusWriter {
 	return &statusWriter{ResponseWriter: w, status: http.StatusOK}
 }
 
+// WriteHeader записывает заголовок ответа с указанным кодом статуса.
 func (w *statusWriter) WriteHeader(code int) {
 	if w.wroteHeader {
 		return
@@ -21,6 +23,7 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Write записывает тело ответа и устанавливает код статуса по умолчанию, если заголовок еще не был записан.
 func (w *statusWriter) Write(body []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)

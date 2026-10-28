@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NorseSway6/template.git/internal/domain/trip"
 	"go.uber.org/mock/gomock"
+
+	"github.com/NorseSway6/template.git/internal/domain/trip"
 )
 
 func TestUsecaseDo(t *testing.T) {
