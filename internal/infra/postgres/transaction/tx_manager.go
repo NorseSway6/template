@@ -3,6 +3,7 @@ package transaction
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -21,14 +22,21 @@ type txKey struct{}
 
 // TxManager хранит ссылку на пулл соединений.
 type TxManager struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	queryTimeout time.Duration
 }
 
 // New создает новый экземпляр TxManager.
-func New(pool *pgxpool.Pool) *TxManager {
+func New(pool *pgxpool.Pool, queryTimeout time.Duration) *TxManager {
 	return &TxManager{
-		pool: pool,
+		pool:         pool,
+		queryTimeout: queryTimeout,
 	}
+}
+
+// WithQueryTimeout задает предельное время операции с базой, сохраняя значения контекста.
+func WithQueryTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, timeout)
 }
 
 // GetExecutor проверяет наличие транзакции в контексте.
@@ -41,6 +49,9 @@ func GetExecutor(ctx context.Context, pool *pgxpool.Pool) DBTX {
 
 // Do выполняет переданную функцию fn внутри транзакции.
 func (m *TxManager) Do(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+	ctx, cancel := WithQueryTimeout(ctx, m.queryTimeout)
+	defer cancel()
+
 	// проверка на отсутствие открытых транзакций
 	if _, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return fn(ctx)

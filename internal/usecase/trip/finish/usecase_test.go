@@ -16,20 +16,12 @@ import (
 	"github.com/NorseSway6/template.git/internal/infra/telemetry"
 )
 
-type mockMetrics struct {
-	tripCompletedCalls int
-}
-
-func (m *mockMetrics) TripCompleted() {
-	m.tripCompletedCalls++
-}
-
 func TestUsecaseDo(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := NewMocktripRepository(ctrl)
 		tx := NewMocktxManager(ctrl)
-		metrics := &mockMetrics{}
+		metrics := NewMockmetrics(ctrl)
 		var logs bytes.Buffer
 		now := time.Date(2024, 3, 4, 5, 6, 7, 0, time.UTC)
 		logger := telemetry.NewJSONLogger(slog.LevelInfo, "test", &logs)
@@ -59,6 +51,7 @@ func TestUsecaseDo(t *testing.T) {
 			}
 			return nil
 		})
+		metrics.EXPECT().TripCompleted()
 
 		finished, err := uc.Do(context.Background(), "trip-123")
 		if err != nil {
@@ -66,9 +59,6 @@ func TestUsecaseDo(t *testing.T) {
 		}
 		if finished == nil || finished.ID != "trip-123" {
 			t.Fatalf("finished trip = %#v, want trip-123", finished)
-		}
-		if metrics.tripCompletedCalls != 1 {
-			t.Errorf("TripCompleted() called %d times, want 1", metrics.tripCompletedCalls)
 		}
 		if !strings.Contains(logs.String(), `"event":"trip.completed"`) ||
 			!strings.Contains(logs.String(), `"trip_id":"trip-123"`) ||
@@ -81,20 +71,18 @@ func TestUsecaseDo(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := NewMocktripRepository(ctrl)
 		tx := NewMocktxManager(ctrl)
-		metrics := &mockMetrics{}
+		metrics := NewMockmetrics(ctrl)
 		uc := New(repo, tx, time.Now, metrics, telemetry.NewJSONLogger(slog.LevelInfo, "test", io.Discard))
 
 		tx.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error {
 			return fn(ctx)
 		})
 		repo.EXPECT().GetByID(gomock.Any(), "trip-123").Return(nil, trip.ErrDriverBusy)
+		metrics.EXPECT().TripCompleted().Times(0)
 
 		_, err := uc.Do(context.Background(), "trip-123")
 		if !errors.Is(err, trip.ErrDriverBusy) {
 			t.Fatalf("Do() error = %v, want %v", err, trip.ErrDriverBusy)
-		}
-		if metrics.tripCompletedCalls != 0 {
-			t.Errorf("TripCompleted() called %d times, want 0", metrics.tripCompletedCalls)
 		}
 	})
 
@@ -102,7 +90,7 @@ func TestUsecaseDo(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := NewMocktripRepository(ctrl)
 		tx := NewMocktxManager(ctrl)
-		metrics := &mockMetrics{}
+		metrics := NewMockmetrics(ctrl)
 		uc := New(repo, tx, time.Now, metrics, telemetry.NewJSONLogger(slog.LevelInfo, "test", io.Discard))
 		completedTrip := &trip.Trip{Status: trip.StatusCompleted}
 		ctx := context.Background()
@@ -111,6 +99,7 @@ func TestUsecaseDo(t *testing.T) {
 			return fn(ctx)
 		})
 		repo.EXPECT().GetByID(gomock.Any(), "trip-456").Return(completedTrip, nil)
+		metrics.EXPECT().TripCompleted().Times(0)
 
 		_, err := uc.Do(ctx, "trip-456")
 		if !errors.Is(err, trip.ErrTripCompleted) {

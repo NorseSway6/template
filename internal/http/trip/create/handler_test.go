@@ -89,6 +89,60 @@ func TestHandlerCreate(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects malformed request bodies", func(t *testing.T) {
+		tests := []struct {
+			name string
+			body string
+		}{
+			{name: "missing user id", body: `{"driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10,"longitude":20},"end_point":{"latitude":30,"longitude":40},"price":1500}`},
+			{name: "missing driver id", body: `{"user_id":"11111111-1111-1111-1111-111111111111","start_point":{"latitude":10,"longitude":20},"end_point":{"latitude":30,"longitude":40},"price":1500}`},
+			{name: "missing point", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","end_point":{"latitude":30,"longitude":40},"price":1500}`},
+			{name: "missing latitude", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"longitude":20},"end_point":{"latitude":30,"longitude":40},"price":1500}`},
+			{name: "missing longitude", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10},"end_point":{"latitude":30,"longitude":40},"price":1500}`},
+			{name: "missing end latitude", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10,"longitude":20},"end_point":{"longitude":40},"price":1500}`},
+			{name: "missing end longitude", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10,"longitude":20},"end_point":{"latitude":30},"price":1500}`},
+			{name: "missing price", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10,"longitude":20},"end_point":{"latitude":30,"longitude":40}}`},
+			{name: "unknown top-level field", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10,"longitude":20},"end_point":{"latitude":30,"longitude":40},"price":1500,"extra":true}`},
+			{name: "unknown point field", body: `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":10,"longitude":20,"extra":true},"end_point":{"latitude":30,"longitude":40},"price":1500}`},
+			{name: "second JSON value", body: validBody + ` {}`},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				uc := NewMockusecase(ctrl)
+				h := New(uc)
+
+				req := httptest.NewRequest(http.MethodPost, "/api/v1/trips", strings.NewReader(tt.body))
+				res := httptest.NewRecorder()
+				h.Create(res, req, api.CreateTripParams{})
+				if res.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want %d; body = %s", res.Code, http.StatusBadRequest, res.Body.String())
+				}
+			})
+		}
+	})
+
+	t.Run("explicit zero coordinates and price are accepted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		uc := NewMockusecase(ctrl)
+		h := New(uc)
+		body := `{"user_id":"11111111-1111-1111-1111-111111111111","driver_id":"22222222-2222-2222-2222-222222222222","start_point":{"latitude":0,"longitude":0},"end_point":{"latitude":0,"longitude":0},"price":0}`
+		uc.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, in model.CreateTripInput) (*trip.Trip, error) {
+			if in.Price != 0 || in.StartPoint != (trip.Point{}) || in.EndPoint != (trip.Point{}) {
+				t.Fatalf("input = %#v, want explicit zero values", in)
+			}
+			return validTrip, nil
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/trips", strings.NewReader(body))
+		res := httptest.NewRecorder()
+		h.Create(res, req, api.CreateTripParams{})
+		if res.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", res.Code, http.StatusCreated)
+		}
+	})
+
 	t.Run("repository error hides details", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		uc := NewMockusecase(ctrl)
@@ -110,5 +164,3 @@ func TestHandlerCreate(t *testing.T) {
 		}
 	})
 }
-
-var _ = context.Background

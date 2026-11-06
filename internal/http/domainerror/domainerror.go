@@ -1,13 +1,22 @@
 package domainerror
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/NorseSway6/template.git/internal/domain/trip"
 	api "github.com/NorseSway6/template.git/internal/generated"
 )
+
+type loggerContextKey struct{}
+
+// WithLogger добавляет логгер HTTP-запроса в контекст.
+func WithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerContextKey{}, logger)
+}
 
 // Problem преобразует доменну ошибку в Problem.
 func Problem(err error) (status int, body api.Problem) {
@@ -32,6 +41,21 @@ func Problem(err error) (status int, body api.Problem) {
 // WriteError записывает ошибку в ответ.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	status, body := Problem(err)
+	if status >= http.StatusInternalServerError {
+		if logger, ok := r.Context().Value(loggerContextKey{}).(*slog.Logger); ok && logger != nil {
+			logger.ErrorContext(r.Context(), "request failed",
+				"error", err,
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", status,
+			)
+		}
+	}
+	WriteProblem(w, r, status, body)
+}
+
+// WriteProblem записывает Problem Details без логирования исходной ошибки.
+func WriteProblem(w http.ResponseWriter, r *http.Request, status int, body api.Problem) {
 	body.Instance = &r.URL.Path
 
 	w.Header().Set("Content-Type", "application/problem+json")

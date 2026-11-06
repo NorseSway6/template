@@ -1,10 +1,18 @@
 package domainerror
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/NorseSway6/template.git/internal/domain/trip"
+	"github.com/NorseSway6/template.git/internal/infra/telemetry"
 )
 
 func TestProblem(t *testing.T) {
@@ -35,6 +43,41 @@ func TestProblem(t *testing.T) {
 				t.Fatalf("code = %q, want %q", body.Code, tt.wantCode)
 			}
 		})
+	}
+}
+
+func TestWriteErrorLogsInternalCauseWithTraceContext(t *testing.T) {
+	var logs bytes.Buffer
+	logger := telemetry.NewJSONLogger(0, "test", &logs)
+	traceID := trace.TraceID{1}
+	spanID := trace.SpanID{2}
+	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID,
+		SpanID:  spanID,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
+	ctx = WithLogger(ctx, logger)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/trips/123", nil).WithContext(ctx)
+	res := httptest.NewRecorder()
+	sourceErr := errors.New("database connection failed")
+
+	WriteError(res, req, sourceErr)
+
+	if res.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusInternalServerError)
+	}
+	if strings.Contains(res.Body.String(), sourceErr.Error()) {
+		t.Fatalf("response leaked internal error: %s", res.Body.String())
+	}
+	logLine := logs.String()
+	if !strings.Contains(logLine, sourceErr.Error()) {
+		t.Fatalf("log does not contain original error: %s", logLine)
+	}
+	if !strings.Contains(logLine, `"trace_id":"`+traceID.String()+`"`) {
+		t.Fatalf("log does not contain trace id: %s", logLine)
+	}
+	if strings.Count(logLine, sourceErr.Error()) != 1 {
+		t.Fatalf("original error logged %d times, want once: %s", strings.Count(logLine, sourceErr.Error()), logLine)
 	}
 }
 

@@ -6,12 +6,15 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/NorseSway6/template.git/internal/http/domainerror"
 )
 
 // Logging представляет middleware для логирования HTTP-запросов.
 func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(domainerror.WithLogger(r.Context(), log))
 			start := time.Now()
 			sw := newStatusWriter(w)
 
@@ -21,10 +24,8 @@ func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 			}
 			defer func() {
 				if rec := recover(); rec != nil {
-					if state != nil && rec != http.ErrAbortHandler {
-						state.setCallback(func(status int) {
-							logRequest(log, r, status, time.Since(start))
-						})
+					if rec != http.ErrAbortHandler {
+						logRequest(log, r, http.StatusInternalServerError, time.Since(start))
 					}
 					panic(rec)
 				}

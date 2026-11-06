@@ -1,6 +1,10 @@
 package trip
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Блок констант со статусами поездки.
 const (
@@ -31,6 +35,20 @@ type Trip struct {
 
 // New создает новый экземпляр Trip с валидацией входных данных.
 func New(id, userId, driverId string, price int64, startPoint, endPoint Point, startedAt time.Time) (*Trip, error) {
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{name: "id", value: id},
+		{name: "user_id", value: userId},
+		{name: "driver_id", value: driverId},
+	} {
+		parsedID, err := uuid.Parse(field.value)
+		if err != nil || parsedID == uuid.Nil {
+			return nil, &ValidationError{Field: field.name, Reason: "must be a non-zero UUID"}
+		}
+	}
+
 	if price < 0 {
 		return nil, &ValidationError{Field: "price", Reason: "must be >= 0"}
 	}

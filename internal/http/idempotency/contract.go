@@ -7,6 +7,11 @@ import (
 )
 
 type store interface {
-	Get(ctx context.Context, key string) (*model.IdempotencyRecord, error)
-	Save(ctx context.Context, rec *model.IdempotencyRecord) error
+	Claim(ctx context.Context, key, requestHash string) (bool, *model.IdempotencyRecord, error)
+	Complete(ctx context.Context, rec *model.IdempotencyRecord) error
+	Release(ctx context.Context, key, requestHash string) error
+}
+
+type txManager interface {
+	Do(ctx context.Context, fn func(context.Context) error) error
 }

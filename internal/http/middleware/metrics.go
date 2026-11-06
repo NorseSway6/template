@@ -51,11 +51,22 @@ func (m *Metrics) Middleware(next http.Handler) http.Handler {
 		sw := newStatusWriter(w)
 		start := time.Now()
 
-		next.ServeHTTP(sw, r)
+		recordDuration := func(status int) {
+			m.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+				method, route,
+				attribute.Int("http.response.status_code", status),
+			))
+		}
+		defer func() {
+			if rec := recover(); rec != nil {
+				if rec != http.ErrAbortHandler {
+					recordDuration(http.StatusInternalServerError)
+				}
+				panic(rec)
+			}
+			recordDuration(sw.status)
+		}()
 
-		m.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
-			method, route,
-			attribute.Int("http.response.status_code", sw.status),
-		))
+		next.ServeHTTP(sw, r)
 	})
 }

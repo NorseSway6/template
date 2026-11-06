@@ -3,6 +3,7 @@ package idempotency
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -19,11 +20,12 @@ const headerKey = "Idempotency-Key"
 // Middleware обеспечивает идемпотентность для HTTP-запросов.
 type Middleware struct {
 	store store
+	tx    txManager
 }
 
 // New создает новый экземпляр Middleware с заданным хранилищем.
-func New(store store) *Middleware {
-	return &Middleware{store: store}
+func New(store store, tx txManager) *Middleware {
+	return &Middleware{store: store, tx: tx}
 }
 
 // Wrap оборачивает HTTP-обработчик, обеспечивая идемпотентность для запросов с указанным ключом.
@@ -43,34 +45,46 @@ func (m *Middleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		hash := hashBody(body)
 
-		existing, err := m.store.Get(r.Context(), key)
+		var rec *recorder
+		var existing *model.IdempotencyRecord
+		err = m.tx.Do(r.Context(), func(ctx context.Context) error {
+			claimed, record, err := m.store.Claim(ctx, key, hash)
+			if err != nil {
+				return err
+			}
+			if !claimed {
+				if record.RequestHash != hash {
+					return trip.ErrIdempotencyConflict
+				}
+				existing = record
+				return nil
+			}
+
+			rec = newRecorder()
+			next(rec, r.WithContext(ctx))
+			if rec.status == http.StatusCreated {
+				return m.store.Complete(ctx, &model.IdempotencyRecord{
+					Key:          key,
+					RequestHash:  hash,
+					ResponseCode: http.StatusOK,
+					ResponseBody: rec.body.Bytes(),
+				})
+			}
+			return m.store.Release(ctx, key, hash)
+		})
 		if err != nil {
 			domainerror.WriteError(w, r, err)
 			return
 		}
 
 		if existing != nil {
-			if existing.RequestHash != hash {
-				domainerror.WriteError(w, r, trip.ErrIdempotencyConflict)
-				return
-			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(existing.ResponseCode)
 			_, _ = w.Write(existing.ResponseBody) //nolint:gosec // Воспроизводит JSON, ранее созданный этим сервисом.
 			return
 		}
 
-		rec := &recorder{ResponseWriter: w}
-		next(rec, r)
-
-		if rec.status == http.StatusCreated {
-			_ = m.store.Save(r.Context(), &model.IdempotencyRecord{
-				Key:          key,
-				RequestHash:  hash,
-				ResponseCode: http.StatusOK,
-				ResponseBody: rec.body.Bytes(),
-			})
-		}
+		rec.flush(w)
 	}
 }
 

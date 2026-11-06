@@ -18,11 +18,6 @@ tripgoctl cluster start
 make env-start
 make env-connect
 make migrate
-```
-
-Запуск приложения:
-
-```bash
 make run
 ```
 
@@ -52,6 +47,7 @@ DATABASE_MIN_CONNS=2
 DATABASE_MAX_CONN_LIFETIME=30m
 DATABASE_CONNECT_TIMEOUT=5s
 DATABASE_QUERY_TIMEOUT=3s
+DATABASE_IDEMPOTENCY_TTL=24h
 OTEL_SERVICE_NAME=trip-service
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:22318
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
@@ -67,8 +63,6 @@ HTTP_IDLE_TIMEOUT=30s
 
 ```bash
 make test
-make test-integration
-make test-mutation
 ```
 
 ## Сделано
