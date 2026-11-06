@@ -9,7 +9,7 @@ IMAGE_NAME := tripgo-app
 CONTAINER_NAME := tripgo_app
 PORT := 8080
 
-.PHONY: generate run migrate-up migrate-down migrate-status migarte-create \
+.PHONY: generate run migrate migrate-down migrate-status migrate-create test \
 	env-start env-stop env-status env-connect docker-build docker-run docker-stop
 
 generate:
@@ -26,8 +26,11 @@ run:
 migrate-create:
 	goose -dir migrations -s create $(name) sql
 
-migrate-up:
+migrate:
 	goose -dir ./migrations postgres "$$DATABASE_URL" up
+
+test:
+	go test -v -race ./...
 
 migrate-down:
 	goose -dir ./migrations postgres "$$DATABASE_URL" down

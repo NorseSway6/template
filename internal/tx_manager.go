@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -26,13 +27,15 @@ type txKey struct{}
 
 // txManager хранит ссылку на пулл соединений.
 type txManager struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	queryTimeout time.Duration
 }
 
 // NewTxManager создает новый экземпляр менеджера транзакций.
-func NewTxManager(pool *pgxpool.Pool) TxManager {
+func NewTxManager(pool *pgxpool.Pool, queryTimeout time.Duration) TxManager {
 	return &txManager{
-		pool: pool,
+		pool:         pool,
+		queryTimeout: queryTimeout,
 	}
 }
 
@@ -46,6 +49,9 @@ func GetExecutor(ctx context.Context, pool *pgxpool.Pool) DBTX {
 
 // Do выполняет переданную функцию fn внутри транзакции.
 func (m *txManager) Do(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, m.queryTimeout)
+	defer cancel()
+
 	// проверка на отсутствие открытых транзакций
 	if _, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return fn(ctx)
@@ -58,19 +64,27 @@ func (m *txManager) Do(ctx context.Context, fn func(ctx context.Context) error) 
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
+	rollback := func() error {
+		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), m.queryTimeout)
+		defer rollbackCancel()
+		return tx.Rollback(rollbackCtx)
+	}
 
 	// закрытие транзакции
 	defer func() {
 		if p := recover(); p != nil {
-			_ = tx.Rollback(ctx)
+			_ = rollback()
 			panic(p)
 		} else if err != nil {
-			if rbErr := tx.Rollback(ctx); rbErr != nil && rbErr != pgx.ErrTxClosed {
+			if rbErr := rollback(); rbErr != nil && rbErr != pgx.ErrTxClosed {
 				err = fmt.Errorf("err: %w, rollback err: %v", err, rbErr)
 			}
 		} else {
 			if cmErr := tx.Commit(ctx); cmErr != nil {
 				err = fmt.Errorf("commit transaction: %w", cmErr)
+				if rbErr := rollback(); rbErr != nil && rbErr != pgx.ErrTxClosed {
+					err = fmt.Errorf("%w, rollback err: %v", err, rbErr)
+				}
 			}
 		}
 	}()

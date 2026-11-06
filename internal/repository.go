@@ -13,21 +13,23 @@ import (
 )
 
 const (
-    StatusActive    = "active"
-    StatusCompleted = "completed"
+	StatusActive    = "active"
+	StatusCompleted = "completed"
 )
 
 // TripRepository реализует работу с таблицами trips и trip_status_history.
 type TripRepository struct {
-	pool *pgxpool.Pool
-	sq squirrel.StatementBuilderType
+	pool         *pgxpool.Pool
+	sq           squirrel.StatementBuilderType
+	queryTimeout time.Duration
 }
 
 // NewTripRepository создает новый экземпляр репозитория.
-func NewTripRepository(db *pgxpool.Pool) *TripRepository {
+func NewTripRepository(db *pgxpool.Pool, queryTimeout time.Duration) *TripRepository {
 	return &TripRepository{
-		pool: db,
-		sq: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		pool:         db,
+		sq:           squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		queryTimeout: queryTimeout,
 	}
 }
 
@@ -50,6 +52,9 @@ type Trip struct {
 
 // Create создает новую поездку и пишет в журнал переходов статуса.
 func (tr *TripRepository) Create(ctx context.Context, trip *Trip) error {
+	ctx, cancel := context.WithTimeout(ctx, tr.queryTimeout)
+	defer cancel()
+
 	exec := GetExecutor(ctx, tr.pool)
 
 	// создание новой поездки
@@ -74,7 +79,7 @@ func (tr *TripRepository) Create(ctx context.Context, trip *Trip) error {
 
 	// вставка поездки
 	_, err = exec.Exec(ctx, query, args...)
-	if err != nil {	
+	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return ErrDriverBusy
@@ -102,6 +107,9 @@ func (tr *TripRepository) Create(ctx context.Context, trip *Trip) error {
 
 // GetByID получает поездку по ее UUID.
 func (tr *TripRepository) GetByID(ctx context.Context, tripID string) (*Trip, error) {
+	ctx, cancel := context.WithTimeout(ctx, tr.queryTimeout)
+	defer cancel()
+
 	exec := GetExecutor(ctx, tr.pool)
 
 	query, args, err := tr.sq.Select(
@@ -121,7 +129,7 @@ func (tr *TripRepository) GetByID(ctx context.Context, tripID string) (*Trip, er
 
 	var t Trip
 	row := exec.QueryRow(ctx, query, args...)
-	
+
 	err = row.Scan(
 		&t.ID, &t.UserID, &t.DriverID,
 		&t.StartLatitude, &t.StartLongitude,
@@ -142,6 +150,9 @@ func (tr *TripRepository) GetByID(ctx context.Context, tripID string) (*Trip, er
 
 // Finish завершает поездку путем перевода статуса в completed и проставления finished_at.
 func (tr *TripRepository) Finish(ctx context.Context, tripID string, finishedAt time.Time) (*Trip, error) {
+	ctx, cancel := context.WithTimeout(ctx, tr.queryTimeout)
+	defer cancel()
+
 	exec := GetExecutor(ctx, tr.pool)
 
 	// обновление статуса поездки
@@ -189,4 +200,3 @@ func (tr *TripRepository) Finish(ctx context.Context, tripID string, finishedAt 
 
 	return tr.GetByID(ctx, tripID)
 }
-

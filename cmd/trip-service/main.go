@@ -25,20 +25,19 @@ func main() {
 		syscall.SIGTERM,
 	)
 	defer stop()
-	
+
 	// подключение к бд
 	db, err := internal.NewPool(ctx, cfg)
-	if err != nil{
+	if err != nil {
 		log.Fatalf("database connection failed: %v", err)
 	}
-	defer db.Close()
 
-	tripRepo := internal.NewTripRepository(db)
-	idempRepo := internal.NewIdempotencyRepository(db)
-	txManager := internal.NewTxManager(db)
+	tripRepo := internal.NewTripRepository(db, cfg.DatabaseQueryTimeout)
+	idempRepo := internal.NewIdempotencyRepository(db, cfg.DatabaseQueryTimeout)
+	txManager := internal.NewTxManager(db, cfg.DatabaseQueryTimeout)
 
 	// инициализация сервера
-	srv := internal.NewServer(cfg, db ,tripRepo, txManager, idempRepo)
+	srv := internal.NewServer(cfg, db, tripRepo, txManager, idempRepo)
 
 	// запуск сервера
 	go func() {
@@ -51,7 +50,15 @@ func main() {
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
+	shutdownErr := srv.Shutdown(shutdownCtx)
+	cancel()
+	if shutdownErr != nil {
+		log.Printf("graceful shutdown failed: %v", shutdownErr)
+		if err := srv.Close(); err != nil {
+			log.Printf("forced HTTP server close failed: %v", err)
+		}
+		log.Fatalf("exiting without waiting for database pool connections")
+	}
 
-	srv.Shutdown(shutdownCtx)
+	db.Close()
 }

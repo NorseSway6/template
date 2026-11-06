@@ -3,8 +3,9 @@ package internal
 import "errors"
 
 var (
-	ErrDriverBusy = errors.New("driver is busy")
-	ErrTripNotFound  = errors.New("trip not found")
-	ErrTripCompleted = errors.New("trip already completed")
-	ErrIdempotencyConflict = errors.New("idempotency conflict: same key with different body")
+	ErrDriverBusy           = errors.New("driver is busy")
+	ErrTripNotFound         = errors.New("trip not found")
+	ErrTripCompleted        = errors.New("trip already completed")
+	ErrIdempotencyConflict  = errors.New("idempotency conflict: same key with different body")
+	ErrIdempotencyKeyExists = errors.New("idempotency key already exists")
 )
