@@ -17,6 +17,7 @@ type Config struct {
 	DatabaseMaxConnLifetime  time.Duration
 	DatabaseConnectTimeout   time.Duration
 	DatabaseQueryTimeout     time.Duration
+	DatabaseIdempotencyTTL   time.Duration
 	ShutdownTimeout          time.Duration
 	HTTPReadHeaderTimeout    time.Duration
 	HTTPReadTimeout          time.Duration
@@ -67,6 +68,11 @@ func LoadAndValidateConfig() (Config, error) {
 		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
 	}
 
+	databaseIdempotencyTTL, err := parseDurationEnvVar("DATABASE_IDEMPOTENCY_TTL")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
+	}
+
 	shutdownTimeout, err := parseDurationEnvVar("SHUTDOWN_TIMEOUT")
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
@@ -106,12 +112,40 @@ func LoadAndValidateConfig() (Config, error) {
 		DatabaseMaxConnLifetime:  databaseMaxConnsLifetime,
 		DatabaseConnectTimeout:   databaseConnectTimeout,
 		DatabaseQueryTimeout:     databaseQueryTimeout,
+		DatabaseIdempotencyTTL:   databaseIdempotencyTTL,
 		ShutdownTimeout:          shutdownTimeout,
 		HTTPReadHeaderTimeout:    readHeaderTimeout,
 		HTTPReadTimeout:          readTimeout,
 		HTTPWriteTimeout:         writeTimeout,
 		HTTPIdleTimeout:          idleTimeout,
 		TelemetryShutdownTimeout: telemetryShutdownTimeout,
+	}
+
+	if cfg.DatabaseMaxConns <= 0 {
+		return Config{}, fmt.Errorf("DATABASE_MAX_CONNS must be greater than zero")
+	}
+	if cfg.DatabaseMinConns < 0 || cfg.DatabaseMinConns > cfg.DatabaseMaxConns {
+		return Config{}, fmt.Errorf("DATABASE_MIN_CONNS must be between zero and DATABASE_MAX_CONNS")
+	}
+
+	for _, timeout := range []struct {
+		name     string
+		duration time.Duration
+	}{
+		{"DATABASE_MAX_CONN_LIFETIME", cfg.DatabaseMaxConnLifetime},
+		{"DATABASE_CONNECT_TIMEOUT", cfg.DatabaseConnectTimeout},
+		{"DATABASE_QUERY_TIMEOUT", cfg.DatabaseQueryTimeout},
+		{"DATABASE_IDEMPOTENCY_TTL", cfg.DatabaseIdempotencyTTL},
+		{"SHUTDOWN_TIMEOUT", cfg.ShutdownTimeout},
+		{"HTTP_READ_HEADER_TIMEOUT", cfg.HTTPReadHeaderTimeout},
+		{"HTTP_READ_TIMEOUT", cfg.HTTPReadTimeout},
+		{"HTTP_WRITE_TIMEOUT", cfg.HTTPWriteTimeout},
+		{"HTTP_IDLE_TIMEOUT", cfg.HTTPIdleTimeout},
+		{"TELEMETRY_SHUTDOWN_TIMEOUT", cfg.TelemetryShutdownTimeout},
+	} {
+		if timeout.duration <= 0 {
+			return Config{}, fmt.Errorf("%s must be greater than zero", timeout.name)
+		}
 	}
 
 	return cfg, nil

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/NorseSway6/template.git/internal/domain/trip"
@@ -14,6 +15,9 @@ import (
 
 // Create создает новую поездку и пишет в журнал переходов статуса.
 func (r *Repository) Create(ctx context.Context, t *trip.Trip) error {
+	ctx, cancel := transaction.WithQueryTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
 	exec := transaction.GetExecutor(ctx, r.pool)
 	row := toDomain(t)
 
@@ -40,6 +44,9 @@ func (r *Repository) Create(ctx context.Context, t *trip.Trip) error {
 
 // Save обновляет статус поездки и пишет в журнал переходов статуса.
 func (r *Repository) Save(ctx context.Context, t *trip.Trip) error {
+	ctx, cancel := transaction.WithQueryTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
 	exec := transaction.GetExecutor(ctx, r.pool)
 
 	query, args, err := r.sq.Update("trips").
@@ -58,6 +65,25 @@ func (r *Repository) Save(ctx context.Context, t *trip.Trip) error {
 	}
 
 	if tag.RowsAffected() == 0 {
+		selectQuery, selectArgs, err := r.sq.Select("status").
+			From("trips").
+			Where(squirrel.Eq{"id": t.ID}).
+			ToSql()
+		if err != nil {
+			return fmt.Errorf("build select trip status sql: %w", err)
+		}
+
+		var status string
+		err = exec.QueryRow(ctx, selectQuery, selectArgs...).Scan(&status)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return trip.ErrTripNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("select trip status after failed update: %w", err)
+		}
+		if status == trip.StatusCompleted {
+			return trip.ErrTripCompleted
+		}
 		return fmt.Errorf("trip %s: no active row to finish", t.ID)
 	}
 

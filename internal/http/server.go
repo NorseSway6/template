@@ -9,7 +9,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/NorseSway6/template.git/internal/domain/trip"
 	api "github.com/NorseSway6/template.git/internal/generated"
+	"github.com/NorseSway6/template.git/internal/http/domainerror"
 	middleware "github.com/NorseSway6/template.git/internal/http/middleware"
 )
 
@@ -37,8 +39,12 @@ func (s *Server) Handler() http.Handler {
 	)
 	r.Get("/health", s.Health)
 	r.Get("/ready", s.Ready)
-	api.HandlerFromMux(s, r)
-	return r
+	return api.HandlerWithOptions(s, api.ChiServerOptions{
+		BaseRouter: r,
+		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			domainerror.WriteError(w, r, &trip.ValidationError{Field: "request", Reason: err.Error()})
+		},
+	})
 }
 
 // Health проверяет, что процесс сервиса запущен.

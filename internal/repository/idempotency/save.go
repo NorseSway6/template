@@ -4,25 +4,38 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Masterminds/squirrel"
+
 	"github.com/NorseSway6/template.git/internal/infra/postgres/transaction"
 	"github.com/NorseSway6/template.git/internal/model"
 )
 
-// Save сохраняет запись идемпотентности в базу данных.
-func (r *Repository) Save(ctx context.Context, rec *model.IdempotencyRecord) error {
+// Complete сохраняет успешный ответ для захваченного ключа.
+func (r *Repository) Complete(ctx context.Context, rec *model.IdempotencyRecord) error {
+	ctx, cancel := transaction.WithQueryTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
 	exec := transaction.GetExecutor(ctx, r.pool)
 
-	query, args, err := r.sq.Insert("idempotency_keys").
-		Columns("key", "request_hash", "response_code", "response_body").
-		Values(rec.Key, rec.RequestHash, rec.ResponseCode, rec.ResponseBody).
+	query, args, err := r.sq.Update("idempotency_keys").
+		Set("response_code", rec.ResponseCode).
+		Set("response_body", rec.ResponseBody).
+		Where(squirrel.Eq{
+			idempotencyKeyColumn: rec.Key,
+			"request_hash":       rec.RequestHash,
+			"response_code":      0,
+		}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("build insert idempotency sql: %w", err)
+		return fmt.Errorf("build complete idempotency sql: %w", err)
 	}
 
-	if _, err := exec.Exec(ctx, query, args...); err != nil {
-		return fmt.Errorf("save idempotency record: %w", err)
+	tag, err := exec.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("complete idempotency record: %w", err)
 	}
-
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("complete idempotency record: expected one pending key, updated %d", tag.RowsAffected())
+	}
 	return nil
 }

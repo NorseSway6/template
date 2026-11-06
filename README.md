@@ -17,11 +17,7 @@ tripgoctl cluster start
 ```bash
 make env-start
 make env-connect
-```
-
-Запуск приложения:
-
-```bash
+make migrate
 make run
 ```
 
@@ -30,6 +26,7 @@ make run
 ```bash
 make docker-build
 make docker-run
+make migrate
 ```
 
 Вес собираемого образа: 4.68MB.
@@ -46,6 +43,7 @@ DATABASE_MIN_CONNS=2
 DATABASE_MAX_CONN_LIFETIME=30m
 DATABASE_CONNECT_TIMEOUT=5s
 DATABASE_QUERY_TIMEOUT=3s
+DATABASE_IDEMPOTENCY_TTL=24h
 OTEL_SERVICE_NAME=trip-service
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:22318
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
@@ -61,8 +59,6 @@ HTTP_IDLE_TIMEOUT=30s
 
 ```bash
 make test
-make test-integration
-make test-mutation
 ```
 
 ## Сделано
@@ -156,7 +152,7 @@ migrations/
 
 ## Дополнительно
 
-Реализована идемпотентность по заголовку Idempotency-Key.
+Реализована идемпотентность по заголовку Idempotency-Key. Ключ действует 24 часа с момента сохранения. Просроченные записи удаляются при следующем успешном создании поездки с ключом, а истекший ключ можно использовать повторно.
 
 Написан Dockerfile с многостадийной сборкой и запуском сервиса в окружении рядом с PostgreSQL с помощью команд из Makefile.
 

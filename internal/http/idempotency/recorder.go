@@ -7,22 +7,44 @@ import (
 
 // recorder оборачивает http.ResponseWriter для записи статуса и тела ответа.
 type recorder struct {
-	http.ResponseWriter
+	header http.Header
 	status int
 	body   bytes.Buffer
 }
 
-// WriteHeader записывает HTTP-статус в ответ и сохраняет его в структуре recorder.
-func (r *recorder) WriteHeader(code int) {
-	r.status = code
-	r.ResponseWriter.WriteHeader(code)
+func newRecorder() *recorder {
+	return &recorder{header: make(http.Header)}
 }
 
-// Write записывает тело ответа и сохраняет его в структуре recorder.
+// Header возвращает заголовки буферизованного ответа.
+func (r *recorder) Header() http.Header {
+	return r.header
+}
+
+// WriteHeader сохраняет HTTP-статус ответа.
+func (r *recorder) WriteHeader(code int) {
+	if r.status == 0 {
+		r.status = code
+	}
+}
+
+// Write буферизует тело ответа.
 func (r *recorder) Write(b []byte) (int, error) {
 	if r.status == 0 {
 		r.status = http.StatusOK
 	}
-	r.body.Write(b)
-	return r.ResponseWriter.Write(b)
+	return r.body.Write(b)
+}
+
+func (r *recorder) flush(w http.ResponseWriter) {
+	for key, values := range r.header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	w.WriteHeader(r.status)
+	_, _ = w.Write(r.body.Bytes())
 }

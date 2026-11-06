@@ -9,9 +9,9 @@ IMAGE_NAME := tripgo-app
 CONTAINER_NAME := tripgo_app
 PORT := 8080
 
-.PHONY: generate run migrate-up migrate-down migrate-status migarte-create \
+.PHONY: generate run migrate migrate-down migrate-status migarte-create \
 	env-start env-stop env-status env-connect docker-build docker-run docker-stop \
-	lint lint-fix test test-integration test-mutation
+	lint lint-fix test
 
 generate:
 	go tool oapi-codegen \
@@ -20,6 +20,7 @@ generate:
 		-include-operation-ids createTrip,getTrip,finishTrip,health,ready \
 		-o internal/generated/api.gen.go \
 		contracts/openapi/trip-service.openapi.yaml
+	go generate ./...
 
 run:
 	go run ./cmd/trip-service/
@@ -27,7 +28,7 @@ run:
 migrate-create:
 	goose -dir migrations -s create $(name) sql
 
-migrate-up:
+migrate:
 	goose -dir ./migrations postgres "$$DATABASE_URL" up
 
 migrate-down:
@@ -69,11 +70,6 @@ lint-fix:
 
 test:
 	go test -v -race -cover ./...
-
-test-integration:
 	go test -v -race -count=2 -tags=integration ./internal/repository/trip
-
-test-mutation:
 	gremlins unleash ./internal/domain --timeout-coefficient 20
 	gremlins unleash ./internal/usecase --timeout-coefficient 20
-

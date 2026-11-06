@@ -20,14 +20,7 @@ type recoveryContextKey struct{}
 
 type recoveryState struct {
 	mu          sync.Mutex
-	onRecover   func(int)
 	spanContext trace.SpanContext
-}
-
-func (s *recoveryState) setCallback(callback func(int)) {
-	s.mu.Lock()
-	s.onRecover = callback
-	s.mu.Unlock()
 }
 
 func (s *recoveryState) setSpanContext(spanContext trace.SpanContext) {
@@ -40,15 +33,6 @@ func (s *recoveryState) getSpanContext() trace.SpanContext {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.spanContext
-}
-
-func (s *recoveryState) complete(status int) {
-	s.mu.Lock()
-	callback := s.onRecover
-	s.mu.Unlock()
-	if callback != nil {
-		callback(status)
-	}
 }
 
 // Recover возвращает middleware, который перехватывает паники в обработчиках HTTP-запросов, логирует их и возвращает клиенту ошибку 500 Internal Server Error.
@@ -74,8 +58,8 @@ func Recover(log *slog.Logger) func(http.Handler) http.Handler {
 					"panic_type", fmt.Sprintf("%T", rec),
 					"stack", string(debug.Stack()),
 				)
-				domainerror.WriteError(w, r, errors.New("internal error"))
-				state.complete(http.StatusInternalServerError)
+				status, body := domainerror.Problem(errors.New("internal error"))
+				domainerror.WriteProblem(w, r, status, body)
 			}()
 			next.ServeHTTP(w, r)
 		})

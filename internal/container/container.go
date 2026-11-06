@@ -42,7 +42,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, shutdownOT
 	if err != nil {
 		return nil, fmt.Errorf("create db pool: %w", err)
 	}
-	tx := transaction.New(pool)
+	tx := transaction.New(pool, cfg.DatabaseQueryTimeout)
 
 	// телеметрия
 	httpMetrics, err := middleware.NewMetrics()
@@ -57,8 +57,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, shutdownOT
 	}
 
 	// репозитории
-	tripRepo := triprepo.New(pool)
-	idemRepo := idemrepo.New(pool)
+	tripRepo := triprepo.New(pool, cfg.DatabaseQueryTimeout)
+	idemRepo := idemrepo.New(pool, cfg.DatabaseQueryTimeout, cfg.DatabaseIdempotencyTTL)
 
 	now := func() time.Time { return time.Now().UTC() }
 
@@ -72,7 +72,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, shutdownOT
 		createhandler.New(createUC),
 		gethandler.New(getUC),
 		finishhandler.New(finishUC),
-		httpidem.New(idemRepo),
+		httpidem.New(idemRepo, tx),
 		pool,
 		logger,
 		httpMetrics,

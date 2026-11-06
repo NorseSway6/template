@@ -14,6 +14,9 @@ import (
 
 // GetByID получает поездку по tripID.
 func (r *Repository) GetByID(ctx context.Context, tripID string) (*trip.Trip, error) {
+	ctx, cancel := transaction.WithQueryTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
 	exec := transaction.GetExecutor(ctx, r.pool)
 
 	query, args, err := r.sq.Select(
