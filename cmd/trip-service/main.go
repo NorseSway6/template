@@ -33,22 +33,24 @@ func run() error {
 	cfg, err := config.LoadAndValidateConfig()
 	if err != nil {
 		logger.ErrorContext(ctx, "configuration load failed", "error", err)
-		return errors.Join(err, shutdownOTel(ctx))
+		return errors.Join(err, shutdownOTel(context.WithoutCancel(ctx)))
 	}
 
 	c, err := container.New(ctx, cfg, logger, shutdownOTel)
 	if err != nil {
 		logger.ErrorContext(ctx, "service initialization failed", "error", err)
-		return errors.Join(err, shutdownOTel(ctx))
+		return errors.Join(err, shutdownOTel(context.WithoutCancel(ctx)))
 	}
 
 	runErr := c.Run(ctx)
 	closeErr := c.Close()
-	if runErr != nil {
-		logger.ErrorContext(ctx, "HTTP server stopped unexpectedly", "error", runErr)
+	err = errors.Join(runErr, closeErr)
+	if err != nil {
+		if errors.Is(closeErr, context.DeadlineExceeded) {
+			logger.ErrorContext(ctx, "shutdown deadline exceeded; process will exit", "error", err)
+		} else {
+			logger.ErrorContext(ctx, "service stopped with an error", "error", err)
+		}
 	}
-	if closeErr != nil {
-		logger.ErrorContext(ctx, "service shutdown failed", "error", closeErr)
-	}
-	return errors.Join(runErr, closeErr)
+	return err
 }

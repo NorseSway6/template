@@ -12,8 +12,16 @@ type (
 		Create(w http.ResponseWriter, r *http.Request, params api.CreateTripParams)
 	}
 
+	positionCreateHandler interface {
+		CreatePosition(w http.ResponseWriter, r *http.Request, id api.TripId)
+	}
+
 	getHandler interface {
 		Get(w http.ResponseWriter, r *http.Request, id api.TripId)
+	}
+
+	positionGetHandler interface {
+		GetPosition(w http.ResponseWriter, r *http.Request, id api.TripId)
 	}
 
 	finishHandler interface {

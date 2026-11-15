@@ -42,7 +42,7 @@ func TestUsecaseDo(t *testing.T) {
 			}
 			return nil
 		})
-		metrics.EXPECT().TripCreated()
+		metrics.EXPECT().TripCreated(gomock.Any())
 
 		got, err := uc.Do(context.Background(), in)
 		if err != nil {
@@ -74,7 +74,7 @@ func TestUsecaseDo(t *testing.T) {
 			return fn(ctx)
 		})
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(trip.ErrDriverBusy)
-		metrics.EXPECT().TripCreated().Times(0)
+		metrics.EXPECT().TripCreated(gomock.Any()).Times(0)
 
 		_, err := uc.Do(context.Background(), in)
 		if err != trip.ErrDriverBusy {

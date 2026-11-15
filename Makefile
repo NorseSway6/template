@@ -10,20 +10,30 @@ CONTAINER_NAME := tripgo_app
 PORT := 8080
 
 .PHONY: generate run migrate migrate-down migrate-status migarte-create \
-	env-start env-stop env-status env-connect docker-build docker-run docker-stop \
+	env-stop env-status env-connect docker-build docker-run docker-stop \
 	lint lint-fix test
 
 generate:
 	go tool oapi-codegen \
 		-generate types,chi-server \
 		-package api \
-		-include-operation-ids createTrip,getTrip,finishTrip,health,ready \
+		-include-operation-ids createTrip,getTrip,finishTrip,createTripPosition,listTripPositions,health,ready \
 		-o internal/generated/api.gen.go \
 		contracts/openapi/trip-service.openapi.yaml
+	go tool oapi-codegen \
+		-generate types \
+		-package api \
+		-o internal/generated/push.gen.go \
+		contracts/openapi/push-service.openapi.yaml
 	go generate ./...
 
 run:
-	go run ./cmd/trip-service/
+	tripgoctl environment start && tripgoctl connect
+	@set -e; \
+	cp .env.example "$(ENV_FILE)"; \
+	set -a; . "./$(ENV_FILE)"; set +a; \
+	goose -dir ./migrations postgres "$$DATABASE_URL" up; \
+	exec go run ./cmd/trip-service/
 
 migrate-create:
 	goose -dir migrations -s create $(name) sql
@@ -40,17 +50,11 @@ migrate-down:
 migrate-status:
 	goose -dir ./migrations postgres "$$DATABASE_URL" status
 
-env-start:
-	tripgoctl environment start
-
 env-stop:
 	tripgoctl environment stop
 
 env-status:
 	tripgoctl environment status
-
-env-connect:
-	tripgoctl connect
 
 docker-build:
 	docker build -t $(IMAGE_NAME) -f deploy/Dockerfile .
@@ -73,6 +77,10 @@ lint-fix:
 
 test:
 	go test -v -race -cover ./...
+
+test-integration:
 	go test -v -race -count=2 -tags=integration ./internal/repository/trip
+
+test-mutation:
 	gremlins unleash ./internal/domain --timeout-coefficient 20
 	gremlins unleash ./internal/usecase --timeout-coefficient 20

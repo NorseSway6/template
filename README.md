@@ -12,12 +12,9 @@ TripGo — MVP сервиса такси. Пассажир выбирает во
 tripgoctl cluster start
 ```
 
-Запуск с помощью tripgoctl:
+После запуска кластера сервис можно запустить одной командой:
 
 ```bash
-make env-start
-make env-connect
-make migrate
 make run
 ```
 
@@ -37,11 +34,7 @@ make migrate
 HTTP_ADDR=:8080
 LOG_LEVEL=info
 SHUTDOWN_TIMEOUT=10s
-HTTP_READ_HEADER_TIMEOUT=2s
-HTTP_READ_TIMEOUT=5s
-HTTP_WRITE_TIMEOUT=10s
-HTTP_IDLE_TIMEOUT=30s
-DATABASE_URL=postgres://tripgo:tripgo@localhost:21032/tripgo?sslmode=disable
+DATABASE_URL=postgres://tripgo:tripgo@localhost:23032/tripgo?sslmode=disable
 DATABASE_MAX_CONNS=10
 DATABASE_MIN_CONNS=2
 DATABASE_MAX_CONN_LIFETIME=30m
@@ -49,14 +42,24 @@ DATABASE_CONNECT_TIMEOUT=5s
 DATABASE_QUERY_TIMEOUT=3s
 DATABASE_IDEMPOTENCY_TTL=24h
 OTEL_SERVICE_NAME=trip-service
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:22318
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:23318
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_RESOURCE_ATTRIBUTES=service.namespace=tripgo,deployment.environment=local
 OTEL_TRACES_SAMPLER=parentbased_always_on
+OTEL_EXPORTER_OTLP_TIMEOUT=10000
+OTEL_BSP_SCHEDULE_DELAY=5000
+OTEL_BSP_EXPORT_TIMEOUT=30000
+OTEL_METRIC_EXPORT_INTERVAL=60000
 HTTP_READ_HEADER_TIMEOUT=2s
 HTTP_READ_TIMEOUT=5s
 HTTP_WRITE_TIMEOUT=10s
 HTTP_IDLE_TIMEOUT=30s
+POSITION_CHECK_INTERVAL=30s
+POSITION_STALE_AFTER=60s
+POSITION_WORKERS=4
+POSITION_QUEUE_SIZE=100
+PUSH_HTTP_URL=http://localhost:23809
+PUSH_REQUEST_TIMEOUT=1s
 ```
 
 ## Тестирование
@@ -79,7 +82,7 @@ make test
 - Реализован менеджер транзакций
 - Реализовать три ручки по контракту + служебные ручки
 - Реализована идемпотентноть (\*)
-- Написан Dockerfile с запуском рядом с БД.
+- Написан Dockerfile с запуском рядом с БД (\*)
 
 **ЛР2:**
 
@@ -90,6 +93,18 @@ make test
 - Настроен линтер
 - Написаны юнит тесты с моками и интеграционные тесты
 - Подключена телеметрия
+- Реализовано мутационное тестирование (\*)
+
+**ЛР3:**
+
+- Добавлена колонка last_position_at в trips и таблица trip_positions в БД
+- Реализованя ручки на сохранения координаты и олучения маршрута
+- Реализована фоновая горутина с тикером, которая на каждом тике забирает эту выборку и ставит поездки в очередь (сканнер)
+- Добавлена ограниченная очередь
+- Добавлено фиксированное число воркеров, дедупликация, отмена по пришедшей координате (воркер)
+- Реализован гейтвей в Push Service по HTTP, за интерфейсом, с таймаутом
+- Добавлены метрики пула и проверок
+- Добавлены новые тесты на конкурентность
 
 ## Решения
 
@@ -135,6 +150,10 @@ internal/
       transaction/            менеджер транзакций
     telemetry/                инициализация OpenTelemetry и slog
   generated/                  сгенерированный по OpenAPI код
+  worker/
+    positions/                сканер, очередь и воркеры
+  gateway/
+    push/                     гейтвей в Push Service
 migrations/
 ```
 
@@ -153,6 +172,12 @@ migrations/
 ```
 
 Интерфейсы объявлены в contract.go своего пакета, неэкспортируемые. При таком подходе реализация не зависит от потребителя - все идет к домену.
+
+## Опрос устаревших поездок
+
+Схема «сканер → очередь → воркеры → Push Service»
+
+Фоновый сканер раз в `POSITION_CHECK_INTERVAL` выбирает из PostgreSQL активные поездки, у которых давно не было координат. Список передается в ограниченную очередь. `POSITION_WORKERS` воркеров отправляют `REQUEST_POSITION` в Push Service. Повторная постановка одной поездки подавляется, а координата, сохраненная до обработки задачи, отменяет queued push. Когда очередь заполнена, задача отбрасывается (`dropped`), это отражается в метриках и предупреждении лога, HTTP-обработчик координат не ждет Push Service.
 
 ## Дополнительно
 

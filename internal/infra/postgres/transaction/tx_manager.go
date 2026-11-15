@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -76,8 +77,8 @@ func (m *TxManager) Do(ctx context.Context, fn func(ctx context.Context) error) 
 			_ = rollback()
 			panic(p)
 		} else if err != nil {
-			if rbErr := rollback(); rbErr != nil && rbErr != pgx.ErrTxClosed {
-				err = fmt.Errorf("err: %w, rollback err: %v", err, rbErr)
+			if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+				err = errors.Join(err, fmt.Errorf("rollback transaction: %w", rbErr))
 			}
 		} else {
 			if cmErr := tx.Commit(ctx); cmErr != nil {
