@@ -18,6 +18,7 @@ tripgoctl cluster start
 make env-start
 make env-connect
 make migrate
+make run
 ```
 
 Запуск с помощью docker:
@@ -46,7 +47,22 @@ DATABASE_MIN_CONNS=2
 DATABASE_MAX_CONN_LIFETIME=30m
 DATABASE_CONNECT_TIMEOUT=5s
 DATABASE_QUERY_TIMEOUT=3s
-DATABASE_PING_TIMEOUT=5s
+DATABASE_IDEMPOTENCY_TTL=24h
+OTEL_SERVICE_NAME=trip-service
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:22318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_RESOURCE_ATTRIBUTES=service.namespace=tripgo,deployment.environment=local
+OTEL_TRACES_SAMPLER=parentbased_always_on
+HTTP_READ_HEADER_TIMEOUT=2s
+HTTP_READ_TIMEOUT=5s
+HTTP_WRITE_TIMEOUT=10s
+HTTP_IDLE_TIMEOUT=30s
+```
+
+## Тестирование
+
+```bash
+make test
 ```
 
 ## Сделано
@@ -65,6 +81,16 @@ DATABASE_PING_TIMEOUT=5s
 - Реализована идемпотентноть (\*)
 - Написан Dockerfile с запуском рядом с БД.
 
+**ЛР2:**
+
+- Код разложен по слоям
+- Введены доменные модели и ошибки
+- Введены интерфейсы
+- Сделан единый маппинг ошибок
+- Настроен линтер
+- Написаны юнит тесты с моками и интеграционные тесты
+- Подключена телеметрия
+
 ## Решения
 
 Используется уровень изоляции Read Committed, так как он дает хорошую производительность и обеспечивает защиту на уровне СУБД.
@@ -73,8 +99,65 @@ DATABASE_PING_TIMEOUT=5s
 
 Запрет двух активных поездок у одного водителя реализован на уровне СУБД с помощью частичного уникального индекса.
 
+Доменные ошибки переводятся в HTTP в одном месте. Неизвестные ошибки дают 500 без деталей, причина пишется в спан.
+
+HTTP-таймауты вынесены в конфиг с дефолтами и проверкой на положительное значение.
+
+Цепочка middleware: `Recover → Tracing → Logging → Metrics → роутер`, recover ловит панику, логирует ее со стектрейсом и отдаёт 500 internal_error, процесс при этом не падает.
+
+## Архитектура
+
+```text
+cmd/
+  service/main.go             читает конфиг, собирает контейнер, запускает, ждёт сигнала
+internal/
+  config/                     разбор и валидация env
+  container/                  создаёт все зависимости и связывает их между собой
+  domain/                     доменные правила, ничего не знает про инфраструктуру
+    trip/                     поездка: статусы и переходы, правила, ошибки домена
+  model/                      структуры, которые ходят между слоями
+  usecase/
+    trip/
+      create/                 usecase.go, contract.go, usecase_test.go, mocks_test.go
+      get/
+      finish/
+  http/                       транспорт, пакет на ручку, server.go, contract.go
+    trip/
+      create/                 handler.go, contract.go, convert.go, mocks_test.go
+      get/
+      finish/
+    domainerror/              маппинг доменной ошибки в HTTP-ответ, одно место
+    middleware/
+  repository/
+    trip/                     repo.go, save.go, fetch.go, convert.go, contract.go
+  infra/
+    postgres/                 пул pgx
+      transaction/            менеджер транзакций
+    telemetry/                инициализация OpenTelemetry и slog
+  generated/                  сгенерированный по OpenAPI код
+migrations/
+```
+
+Зависимости:
+
+```text
+           импорты (код)                   вызовы (запрос)
+
+      container (собирает всё)              HTTP-запрос
+      │          │          │                   │
+      ▼          ▼          ▼                   ▼
+    http ──▶ usecase ──▶ domain ◀── repository    http → usecase → repository → БД
+      │                    ▲                │
+      └────────────────────┴────────────────┘
+           (все импорты ведут к domain)
+```
+
+Интерфейсы объявлены в contract.go своего пакета, неэкспортируемые. При таком подходе реализация не зависит от потребителя - все идет к домену.
+
 ## Дополнительно
 
 Реализована идемпотентность по заголовку Idempotency-Key. Ключ действует 24 часа с момента сохранения. Просроченные записи удаляются при следующем успешном создании поездки с ключом, а истекший ключ можно использовать повторно.
 
 Написан Dockerfile с многостадийной сборкой и запуском сервиса в окружении рядом с PostgreSQL с помощью команд из Makefile.
+
+Реализовано мутационное тестирование пакетов internal/domain и internal/usecase

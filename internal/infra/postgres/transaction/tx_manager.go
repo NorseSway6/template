@@ -1,4 +1,4 @@
-package internal
+package transaction
 
 import (
 	"context"
@@ -17,26 +17,26 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// TxManager определяет контракт менеджера транзакций.
-type TxManager interface {
-	Do(ctx context.Context, fn func(ctx context.Context) error) error
-}
-
-// key является типом для ключа контекста, чтобы избежать коллизий.
+// txKey является типом для ключа контекста, чтобы избежать коллизий.
 type txKey struct{}
 
-// txManager хранит ссылку на пулл соединений.
-type txManager struct {
+// TxManager хранит ссылку на пулл соединений.
+type TxManager struct {
 	pool         *pgxpool.Pool
 	queryTimeout time.Duration
 }
 
-// NewTxManager создает новый экземпляр менеджера транзакций.
-func NewTxManager(pool *pgxpool.Pool, queryTimeout time.Duration) TxManager {
-	return &txManager{
+// New создает новый экземпляр TxManager.
+func New(pool *pgxpool.Pool, queryTimeout time.Duration) *TxManager {
+	return &TxManager{
 		pool:         pool,
 		queryTimeout: queryTimeout,
 	}
+}
+
+// WithQueryTimeout задает предельное время операции с базой, сохраняя значения контекста.
+func WithQueryTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, timeout)
 }
 
 // GetExecutor проверяет наличие транзакции в контексте.
@@ -48,8 +48,8 @@ func GetExecutor(ctx context.Context, pool *pgxpool.Pool) DBTX {
 }
 
 // Do выполняет переданную функцию fn внутри транзакции.
-func (m *txManager) Do(ctx context.Context, fn func(ctx context.Context) error) (err error) {
-	ctx, cancel := context.WithTimeout(ctx, m.queryTimeout)
+func (m *TxManager) Do(ctx context.Context, fn func(ctx context.Context) error) (err error) {
+	ctx, cancel := WithQueryTimeout(ctx, m.queryTimeout)
 	defer cancel()
 
 	// проверка на отсутствие открытых транзакций

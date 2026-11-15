@@ -9,8 +9,9 @@ IMAGE_NAME := tripgo-app
 CONTAINER_NAME := tripgo_app
 PORT := 8080
 
-.PHONY: generate run migrate migrate-down migrate-status migrate-create test \
-	env-start env-stop env-status env-connect docker-build docker-run docker-stop
+.PHONY: generate run migrate migrate-down migrate-status migarte-create \
+	env-start env-stop env-status env-connect docker-build docker-run docker-stop \
+	lint lint-fix test
 
 generate:
 	go tool oapi-codegen \
@@ -19,6 +20,7 @@ generate:
 		-include-operation-ids createTrip,getTrip,finishTrip,health,ready \
 		-o internal/generated/api.gen.go \
 		contracts/openapi/trip-service.openapi.yaml
+	go generate ./...
 
 run:
 	go run ./cmd/trip-service/
@@ -63,3 +65,14 @@ docker-run:
 docker-stop:
 	docker rm -f $(CONTAINER_NAME) 2>/dev/null || true
 
+lint:
+	golangci-lint run
+
+lint-fix:
+	golangci-lint run --fix
+
+test:
+	go test -v -race -cover ./...
+	go test -v -race -count=2 -tags=integration ./internal/repository/trip
+	gremlins unleash ./internal/domain --timeout-coefficient 20
+	gremlins unleash ./internal/usecase --timeout-coefficient 20
