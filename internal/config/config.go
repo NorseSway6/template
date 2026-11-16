@@ -17,6 +17,7 @@ type Config struct {
 	DatabaseMinConns        int32
 	PositionQueueSize       int32
 	PositionWorkers         int32
+	PositionScanBatchSize   int32
 	DatabaseMaxConnLifetime time.Duration
 	DatabaseConnectTimeout  time.Duration
 	DatabaseQueryTimeout    time.Duration
@@ -62,12 +63,6 @@ func LoadAndValidateConfig() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid parse int: %w", err)
 	}
-	if databaseMaxConns <= 0 {
-		return Config{}, fmt.Errorf("DATABASE_MAX_CONNS must be greater than zero")
-	}
-	if databaseMinConns < 0 || databaseMinConns > databaseMaxConns {
-		return Config{}, fmt.Errorf("DATABASE_MIN_CONNS must be between zero and DATABASE_MAX_CONNS")
-	}
 
 	queueSize, err := parseIntEnvVar("POSITION_QUEUE_SIZE")
 	if err != nil {
@@ -75,6 +70,11 @@ func LoadAndValidateConfig() (Config, error) {
 	}
 
 	workers, err := parseIntEnvVar("POSITION_WORKERS")
+	if err != nil {
+		return Config{}, fmt.Errorf("invalid parse int: %w", err)
+	}
+
+	scanBatchSize, err := parseIntEnvVar("POSITION_SCAN_BATCH_SIZE")
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid parse int: %w", err)
 	}
@@ -92,10 +92,6 @@ func LoadAndValidateConfig() (Config, error) {
 	databaseQueryTimeout, err := parseDurationEnvVar("DATABASE_QUERY_TIMEOUT")
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid parse duration: %w", err)
-	}
-	databasePingTimeout, err := parseDurationEnvVar("DATABASE_PING_TIMEOUT")
-	if err != nil {
-		return Config{}, err
 	}
 
 	databaseIdempotencyTTL, err := parseDurationEnvVar("DATABASE_IDEMPOTENCY_TTL")
@@ -152,6 +148,7 @@ func LoadAndValidateConfig() (Config, error) {
 		DatabaseMinConns:        databaseMinConns,
 		PositionQueueSize:       queueSize,
 		PositionWorkers:         workers,
+		PositionScanBatchSize:   scanBatchSize,
 		DatabaseMaxConnLifetime: databaseMaxConnsLifetime,
 		DatabaseConnectTimeout:  databaseConnectTimeout,
 		DatabaseQueryTimeout:    databaseQueryTimeout,
@@ -177,6 +174,9 @@ func LoadAndValidateConfig() (Config, error) {
 	}
 	if cfg.PositionWorkers <= 0 {
 		return Config{}, fmt.Errorf("POSITION_WORKERS must be greater than zero")
+	}
+	if cfg.PositionScanBatchSize <= 0 {
+		return Config{}, fmt.Errorf("POSITION_SCAN_BATCH_SIZE must be greater than zero")
 	}
 
 	for _, timeout := range []struct {
@@ -211,16 +211,9 @@ func parseDurationEnvVar(envVar string) (time.Duration, error) {
 		return 0, fmt.Errorf("%s is required", envVar)
 	}
 
-	return parsePositiveDuration(envVar, durationStr)
-}
-
-func parsePositiveDuration(envVar, durationStr string) (time.Duration, error) {
 	duration, err := time.ParseDuration(durationStr)
 	if err != nil {
 		return 0, fmt.Errorf("invalid %s: %w", envVar, err)
-	}
-	if duration <= 0 {
-		return 0, fmt.Errorf("%s must be greater than zero", envVar)
 	}
 
 	return duration, nil

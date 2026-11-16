@@ -96,14 +96,26 @@ func (r *Repository) ListPositions(ctx context.Context, tripID string) ([]*trip.
 	return positions, nil
 }
 
-// ListStale возвращает список поездок, по которым давно не было координат.
-func (r *Repository) ListStale(ctx context.Context, staleAfter time.Duration) ([]model.StaleTrip, error) {
+// ListStaleBatch возвращает следующую страницу поездок, по которым давно не было координат.
+func (r *Repository) ListStaleBatch(
+	ctx context.Context,
+	staleAfter time.Duration,
+	after *model.StaleTrip,
+	limit int,
+) ([]model.StaleTrip, error) {
+	if staleAfter <= 0 {
+		return nil, fmt.Errorf("staleAfter must be positive, got %s", staleAfter)
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("stale trip batch limit must be positive, got %d", limit)
+	}
+
 	ctx, cancel := transaction.WithQueryTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	exec := transaction.GetExecutor(ctx, r.pool)
 
-	query, args, err := r.sq.Select(
+	builder := r.sq.Select(
 		"id", "driver_id", "COALESCE(last_position_at, started_at) AS stale_since",
 	).
 		From("trips").
@@ -113,8 +125,19 @@ func (r *Repository) ListStale(ctx context.Context, staleAfter time.Duration) ([
 				staleAfter.Microseconds(),
 			),
 			squirrel.Eq{statusColumn: trip.StatusActive},
-		}).
+		})
+	if after != nil {
+		builder = builder.Where(squirrel.Or{
+			squirrel.Expr("COALESCE(last_position_at, started_at) > ?", after.StaleSince),
+			squirrel.And{
+				squirrel.Expr("COALESCE(last_position_at, started_at) = ?", after.StaleSince),
+				squirrel.Expr("id > ?", after.ID),
+			},
+		})
+	}
+	query, args, err := builder.
 		OrderBy("stale_since ASC", "id ASC").
+		Limit(uint64(limit)).
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select stale trips sql: %w", err)

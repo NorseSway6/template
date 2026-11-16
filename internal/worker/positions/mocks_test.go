@@ -43,19 +43,19 @@ func (m *MocktripSource) EXPECT() *MocktripSourceMockRecorder {
 	return m.recorder
 }
 
-// ListStale mocks base method.
-func (m *MocktripSource) ListStale(ctx context.Context, staleAfter time.Duration) ([]model.StaleTrip, error) {
+// ListStaleBatch mocks base method.
+func (m *MocktripSource) ListStaleBatch(ctx context.Context, staleAfter time.Duration, after *model.StaleTrip, limit int) ([]model.StaleTrip, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListStale", ctx, staleAfter)
+	ret := m.ctrl.Call(m, "ListStaleBatch", ctx, staleAfter, after, limit)
 	ret0, _ := ret[0].([]model.StaleTrip)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListStale indicates an expected call of ListStale.
-func (mr *MocktripSourceMockRecorder) ListStale(ctx, staleAfter any) *gomock.Call {
+// ListStaleBatch indicates an expected call of ListStaleBatch.
+func (mr *MocktripSourceMockRecorder) ListStaleBatch(ctx, staleAfter, after, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStale", reflect.TypeOf((*MocktripSource)(nil).ListStale), ctx, staleAfter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStaleBatch", reflect.TypeOf((*MocktripSource)(nil).ListStaleBatch), ctx, staleAfter, after, limit)
 }
 
 // Mockticker is a mock of ticker interface.
@@ -132,6 +132,20 @@ func (m *MockenqueueQueue) EXPECT() *MockenqueueQueueMockRecorder {
 	return m.recorder
 }
 
+// Full mocks base method.
+func (m *MockenqueueQueue) Full() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Full")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Full indicates an expected call of Full.
+func (mr *MockenqueueQueueMockRecorder) Full() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Full", reflect.TypeOf((*MockenqueueQueue)(nil).Full))
+}
+
 // TryEnqueue mocks base method.
 func (m *MockenqueueQueue) TryEnqueue(trip model.StaleTrip, checkSpan trace.SpanContext) Result {
 	m.ctrl.T.Helper()
@@ -180,6 +194,20 @@ func (m *MockstaleQueue) Done(e entry) {
 func (mr *MockstaleQueueMockRecorder) Done(e any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Done", reflect.TypeOf((*MockstaleQueue)(nil).Done), e)
+}
+
+// Full mocks base method.
+func (m *MockstaleQueue) Full() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Full")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Full indicates an expected call of Full.
+func (mr *MockstaleQueueMockRecorder) Full() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Full", reflect.TypeOf((*MockstaleQueue)(nil).Full))
 }
 
 // Take mocks base method.
@@ -283,6 +311,18 @@ func (m *MockscannerMetrics) PositionRequestDropped(ctx context.Context) {
 func (mr *MockscannerMetricsMockRecorder) PositionRequestDropped(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PositionRequestDropped", reflect.TypeOf((*MockscannerMetrics)(nil).PositionRequestDropped), ctx)
+}
+
+// ScanRows mocks base method.
+func (m *MockscannerMetrics) ScanRows(ctx context.Context, rows int64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ScanRows", ctx, rows)
+}
+
+// ScanRows indicates an expected call of ScanRows.
+func (mr *MockscannerMetricsMockRecorder) ScanRows(ctx, rows any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScanRows", reflect.TypeOf((*MockscannerMetrics)(nil).ScanRows), ctx, rows)
 }
 
 // StaleCheck mocks base method.

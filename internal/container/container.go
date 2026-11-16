@@ -116,7 +116,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, shutdownOT
 		return nil, fmt.Errorf("create position scanner ticker: %w", err)
 	}
 	positionScanner, err := positions.NewScanner(
-		tripRepo, positionQueue, ticker, cfg.PositionStaleAfter, positionMetrics, logger, nil,
+		tripRepo, positionQueue, ticker, cfg.PositionStaleAfter,
+		int(cfg.PositionScanBatchSize), positionMetrics, logger, nil,
 	)
 	if err != nil {
 		ticker.Stop()

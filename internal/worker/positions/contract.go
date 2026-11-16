@@ -13,7 +13,12 @@ import (
 
 type (
 	tripSource interface {
-		ListStale(ctx context.Context, staleAfter time.Duration) ([]model.StaleTrip, error)
+		ListStaleBatch(
+			ctx context.Context,
+			staleAfter time.Duration,
+			after *model.StaleTrip,
+			limit int,
+		) ([]model.StaleTrip, error)
 	}
 
 	ticker interface {
@@ -23,6 +28,7 @@ type (
 
 	enqueueQueue interface {
 		TryEnqueue(trip model.StaleTrip, checkSpan trace.SpanContext) Result
+		Full() bool
 	}
 
 	staleQueue interface {
@@ -38,6 +44,7 @@ type (
 	scannerMetrics interface {
 		StaleCheck(ctx context.Context, result string)
 		PositionRequestDropped(ctx context.Context)
+		ScanRows(ctx context.Context, rows int64)
 	}
 
 	poolMetrics interface {

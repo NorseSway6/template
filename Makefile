@@ -10,8 +10,8 @@ CONTAINER_NAME := tripgo_app
 PORT := 8080
 
 .PHONY: generate run migrate migrate-down migrate-status migarte-create \
-	env-stop env-status env-connect docker-build docker-run docker-stop \
-	lint lint-fix test
+	env-stop env-status docker-build docker-run docker-stop \
+	lint lint-fix test test-integration test-mutation
 
 generate:
 	go tool oapi-codegen \
@@ -40,9 +40,6 @@ migrate-create:
 
 migrate:
 	goose -dir ./migrations postgres "$$DATABASE_URL" up
-
-test:
-	go test -v -race ./...
 
 migrate-down:
 	goose -dir ./migrations postgres "$$DATABASE_URL" down

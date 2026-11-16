@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Pool представляет пул воркеров, которые обрабатывают устаревшие поездки из очереди.
 type Pool struct {
 	queue          staleQueue
 	gateway        gateway
@@ -22,6 +23,7 @@ type Pool struct {
 	tracer         trace.Tracer
 }
 
+// NewPool создает новый пул воркеров для обработки устаревших поездок.
 func NewPool(
 	queue *Queue,
 	gateway gateway,
@@ -64,6 +66,7 @@ func NewPool(
 	}, nil
 }
 
+// Run запускает пул воркеров для обработки устаревших поездок из очереди.
 func (p *Pool) Run(ctx context.Context) {
 	var workers sync.WaitGroup
 	workers.Add(p.workerCount)
@@ -76,6 +79,7 @@ func (p *Pool) Run(ctx context.Context) {
 	workers.Wait()
 }
 
+// runWorker запускает воркер, который извлекает устаревшие поездки из очереди и обрабатывает их.
 func (p *Pool) runWorker(ctx context.Context) {
 	p.metrics.WorkerActive(1)
 	defer p.metrics.WorkerActive(-1)
@@ -89,6 +93,7 @@ func (p *Pool) runWorker(ctx context.Context) {
 	}
 }
 
+// handle обрабатывает устаревшую поездку, извлеченную из очереди.
 func (p *Pool) handle(ctx context.Context, e entry) {
 	defer p.queue.Done(e)
 

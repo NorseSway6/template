@@ -13,6 +13,7 @@ import (
 // PositionMetrics представляет структуру для сбора метрик, связанных с позициями поездок.
 type PositionMetrics struct {
 	staleChecks      metric.Int64Counter
+	scanRows         metric.Int64Histogram
 	positionRequests metric.Int64Counter
 	requestDuration  metric.Float64Histogram
 	positionsSaved   metric.Int64Counter
@@ -29,6 +30,9 @@ func NewPositionMetrics() (*PositionMetrics, error) {
 	m := &PositionMetrics{}
 	var err error
 	if m.staleChecks, err = meter.Int64Counter("tripgo.stale_checks"); err != nil {
+		return nil, err
+	}
+	if m.scanRows, err = meter.Int64Histogram("tripgo.stale_scan.rows", metric.WithUnit("{row}")); err != nil {
 		return nil, err
 	}
 	if m.positionRequests, err = meter.Int64Counter("tripgo.position_requests"); err != nil {
@@ -60,6 +64,10 @@ func NewPositionMetrics() (*PositionMetrics, error) {
 
 func (m *PositionMetrics) StaleCheck(ctx context.Context, result string) {
 	m.staleChecks.Add(ctx, 1, metric.WithAttributes(attribute.String("result", result)))
+}
+
+func (m *PositionMetrics) ScanRows(ctx context.Context, rows int64) {
+	m.scanRows.Record(ctx, rows)
 }
 
 func (m *PositionMetrics) PositionRequestDropped(ctx context.Context) {

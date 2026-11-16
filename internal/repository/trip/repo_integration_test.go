@@ -209,12 +209,12 @@ func TestRepositoryListStaleIncludesOnlyOldActiveTripsAndUsesIndex(t *testing.T)
 		t.Fatalf("analyze trips: %v", err)
 	}
 
-	got, err := repo.ListStale(ctx, time.Minute)
+	got, err := repo.ListStaleBatch(ctx, time.Minute, nil, 100)
 	if err != nil {
-		t.Fatalf("ListStale() error = %v", err)
+		t.Fatalf("ListStaleBatch() error = %v", err)
 	}
 	if len(got) != 1 || got[0].ID != staleTrip.ID {
-		t.Fatalf("ListStale() = %#v, want only stale active trip %q", got, staleTrip.ID)
+		t.Fatalf("ListStaleBatch() = %#v, want only stale active trip %q", got, staleTrip.ID)
 	}
 
 	query, args, err := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).
@@ -251,6 +251,43 @@ func TestRepositoryListStaleIncludesOnlyOldActiveTripsAndUsesIndex(t *testing.T)
 	}
 	if !strings.Contains(plan.String(), "trips_active_stale_idx") || strings.Contains(plan.String(), "Seq Scan") {
 		t.Fatalf("stale trip query plan does not use trips_active_stale_idx:\n%s", plan.String())
+	}
+}
+
+func TestRepositoryListStaleBatchUsesKeysetPagination(t *testing.T) {
+	ctx := context.Background()
+	pool := setupIntegrationDB(t, ctx)
+	repo := New(pool, 3*time.Second)
+	base := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
+	wantIDs := make([]string, 3)
+
+	for i := range wantIDs {
+		wantIDs[i] = uuid.NewString()
+		_, err := pool.Exec(ctx, `
+			INSERT INTO trips (
+				id, user_id, driver_id, start_latitude, start_longitude,
+				end_latitude, end_longitude, price, status, started_at
+			) VALUES ($1, $2, $3, 11, 12, 13, 14, 500, 'active', $4)
+		`, wantIDs[i], integrationUserID, uuid.NewString(), base.Add(time.Duration(i)*time.Minute))
+		if err != nil {
+			t.Fatalf("insert stale trip %d: %v", i, err)
+		}
+	}
+
+	firstBatch, err := repo.ListStaleBatch(ctx, time.Minute, nil, 2)
+	if err != nil {
+		t.Fatalf("ListStaleBatch(first page) error = %v", err)
+	}
+	if len(firstBatch) != 2 || firstBatch[0].ID != wantIDs[0] || firstBatch[1].ID != wantIDs[1] {
+		t.Fatalf("first page = %#v, want trip IDs %v", firstBatch, wantIDs[:2])
+	}
+
+	secondBatch, err := repo.ListStaleBatch(ctx, time.Minute, &firstBatch[1], 2)
+	if err != nil {
+		t.Fatalf("ListStaleBatch(second page) error = %v", err)
+	}
+	if len(secondBatch) != 1 || secondBatch[0].ID != wantIDs[2] {
+		t.Fatalf("second page = %#v, want trip ID %q", secondBatch, wantIDs[2])
 	}
 }
 

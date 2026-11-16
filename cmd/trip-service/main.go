@@ -52,5 +52,6 @@ func run() error {
 			logger.ErrorContext(ctx, "service stopped with an error", "error", err)
 		}
 	}
+
 	return err
 }
