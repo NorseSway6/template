@@ -5,6 +5,7 @@ package trip
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -166,6 +168,232 @@ func TestRepositoryCreateRollbackOnError(t *testing.T) {
 	}
 }
 
+func TestRepositoryListStaleIncludesOnlyOldActiveTripsAndUsesIndex(t *testing.T) {
+	ctx := context.Background()
+	pool := setupIntegrationDB(t, ctx)
+	repo := New(pool, 3*time.Second)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	staleTrip := newPositionTestTrip(uuid.NewString(), uuid.NewString(), now.Add(-10*time.Minute))
+	freshTrip := newPositionTestTrip(uuid.NewString(), uuid.NewString(), now)
+	completedTrip := newPositionTestTrip(uuid.NewString(), uuid.NewString(), now.Add(-10*time.Minute))
+
+	for _, trip := range []*domaintrip.Trip{staleTrip, freshTrip, completedTrip} {
+		if err := repo.Create(ctx, trip); err != nil {
+			t.Fatalf("Create(%q) error = %v", trip.ID, err)
+		}
+	}
+	completedAt := now
+	completedTrip.Status = domaintrip.StatusCompleted
+	completedTrip.FinishedAt = &completedAt
+	completedTrip.UpdatedAt = completedAt
+	if err := repo.Save(ctx, completedTrip); err != nil {
+		t.Fatalf("Save(completed trip) error = %v", err)
+	}
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO trips (
+			id, user_id, driver_id, start_latitude, start_longitude,
+			end_latitude, end_longitude, price, status, started_at
+		)
+		SELECT
+			('cccccccc-0000-0000-0000-' || lpad(i::text, 12, '0'))::uuid,
+			$1,
+			('dddddddd-0000-0000-0000-' || lpad(i::text, 12, '0'))::uuid,
+			11, 12, 13, 14, 500, 'active', NOW()
+		FROM generate_series(1, 1000) AS i
+	`, integrationUserID)
+	if err != nil {
+		t.Fatalf("insert fresh active trips for index plan: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "ANALYZE trips"); err != nil {
+		t.Fatalf("analyze trips: %v", err)
+	}
+
+	got, err := repo.ListStaleBatch(ctx, time.Minute, nil, 100)
+	if err != nil {
+		t.Fatalf("ListStaleBatch() error = %v", err)
+	}
+	if len(got) != 1 || got[0].ID != staleTrip.ID {
+		t.Fatalf("ListStaleBatch() = %#v, want only stale active trip %q", got, staleTrip.ID)
+	}
+
+	query, args, err := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).
+		Select("id", "driver_id", "COALESCE(last_position_at, started_at) AS stale_since").
+		From("trips").
+		Where(squirrel.And{
+			squirrel.Expr(
+				"COALESCE(last_position_at, started_at) < NOW() - (? * INTERVAL '1 microsecond')",
+				time.Minute.Microseconds(),
+			),
+			squirrel.Eq{statusColumn: domaintrip.StatusActive},
+		}).
+		OrderBy("stale_since ASC", "id ASC").
+		ToSql()
+	if err != nil {
+		t.Fatalf("build stale trip query for EXPLAIN: %v", err)
+	}
+	rows, err := pool.Query(ctx, "EXPLAIN (ANALYZE, BUFFERS) "+query, args...)
+	if err != nil {
+		t.Fatalf("EXPLAIN stale trip query: %v", err)
+	}
+	defer rows.Close()
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatalf("scan query plan: %v", err)
+		}
+		plan.WriteString(line)
+		plan.WriteByte('\n')
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read query plan: %v", err)
+	}
+	if !strings.Contains(plan.String(), "trips_active_stale_idx") || strings.Contains(plan.String(), "Seq Scan") {
+		t.Fatalf("stale trip query plan does not use trips_active_stale_idx:\n%s", plan.String())
+	}
+}
+
+func TestRepositoryListStaleBatchUsesKeysetPagination(t *testing.T) {
+	ctx := context.Background()
+	pool := setupIntegrationDB(t, ctx)
+	repo := New(pool, 3*time.Second)
+	base := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
+	wantIDs := make([]string, 3)
+
+	for i := range wantIDs {
+		wantIDs[i] = uuid.NewString()
+		_, err := pool.Exec(ctx, `
+			INSERT INTO trips (
+				id, user_id, driver_id, start_latitude, start_longitude,
+				end_latitude, end_longitude, price, status, started_at
+			) VALUES ($1, $2, $3, 11, 12, 13, 14, 500, 'active', $4)
+		`, wantIDs[i], integrationUserID, uuid.NewString(), base.Add(time.Duration(i)*time.Minute))
+		if err != nil {
+			t.Fatalf("insert stale trip %d: %v", i, err)
+		}
+	}
+
+	firstBatch, err := repo.ListStaleBatch(ctx, time.Minute, nil, 2)
+	if err != nil {
+		t.Fatalf("ListStaleBatch(first page) error = %v", err)
+	}
+	if len(firstBatch) != 2 || firstBatch[0].ID != wantIDs[0] || firstBatch[1].ID != wantIDs[1] {
+		t.Fatalf("first page = %#v, want trip IDs %v", firstBatch, wantIDs[:2])
+	}
+
+	secondBatch, err := repo.ListStaleBatch(ctx, time.Minute, &firstBatch[1], 2)
+	if err != nil {
+		t.Fatalf("ListStaleBatch(second page) error = %v", err)
+	}
+	if len(secondBatch) != 1 || secondBatch[0].ID != wantIDs[2] {
+		t.Fatalf("second page = %#v, want trip ID %q", secondBatch, wantIDs[2])
+	}
+}
+
+func TestRepositorySavePositionUpdatesLastPositionAndRollsBackOnError(t *testing.T) {
+	ctx := context.Background()
+	pool := setupIntegrationDB(t, ctx)
+	repo := New(pool, 3*time.Second)
+	txManager := transaction.New(pool, 3*time.Second)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	activeTrip := newPositionTestTrip(uuid.NewString(), uuid.NewString(), now.Add(-time.Hour))
+	if err := repo.Create(ctx, activeTrip); err != nil {
+		t.Fatalf("Create(active trip) error = %v", err)
+	}
+
+	recordedAt := now.Add(-30 * time.Second)
+	position := domaintrip.RestorePosition(
+		"", activeTrip.ID, domaintrip.Point{Latitude: 59.93, Longitude: 30.33},
+		recordedAt, now,
+	)
+	if err := txManager.Do(ctx, func(ctx context.Context) error {
+		return repo.SavePosition(ctx, position)
+	}); err != nil {
+		t.Fatalf("SavePosition(active trip) error = %v", err)
+	}
+
+	var lastPositionAt sql.NullTime
+	if err := pool.QueryRow(ctx, "SELECT last_position_at FROM trips WHERE id = $1", activeTrip.ID).Scan(&lastPositionAt); err != nil {
+		t.Fatalf("read active trip last_position_at: %v", err)
+	}
+	if !lastPositionAt.Valid || !lastPositionAt.Time.Equal(recordedAt) {
+		t.Fatalf("last_position_at = %v, want %s", lastPositionAt, recordedAt)
+	}
+	oldRecordedAt := recordedAt.Add(-time.Hour)
+	oldPosition := domaintrip.RestorePosition(
+		"", activeTrip.ID, domaintrip.Point{Latitude: 59.92, Longitude: 30.32},
+		oldRecordedAt, now,
+	)
+	if err := txManager.Do(ctx, func(ctx context.Context) error {
+		return repo.SavePosition(ctx, oldPosition)
+	}); err != nil {
+		t.Fatalf("SavePosition(old coordinate) error = %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT last_position_at FROM trips WHERE id = $1", activeTrip.ID).Scan(&lastPositionAt); err != nil {
+		t.Fatalf("read last_position_at after old coordinate: %v", err)
+	}
+	if !lastPositionAt.Valid || !lastPositionAt.Time.Equal(recordedAt) {
+		t.Fatalf("last_position_at after old coordinate = %v, want %s", lastPositionAt, recordedAt)
+	}
+	var positionCount int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM trip_positions WHERE trip_id = $1", activeTrip.ID).Scan(&positionCount); err != nil {
+		t.Fatalf("count saved positions: %v", err)
+	}
+	if positionCount != 2 {
+		t.Fatalf("saved position count = %d, want 2", positionCount)
+	}
+
+	completedTrip := newPositionTestTrip(uuid.NewString(), uuid.NewString(), now.Add(-time.Hour))
+	if err := repo.Create(ctx, completedTrip); err != nil {
+		t.Fatalf("Create(completed trip) error = %v", err)
+	}
+	finishedAt := now
+	completedTrip.Status = domaintrip.StatusCompleted
+	completedTrip.FinishedAt = &finishedAt
+	completedTrip.UpdatedAt = finishedAt
+	if err := repo.Save(ctx, completedTrip); err != nil {
+		t.Fatalf("Save(completed trip) error = %v", err)
+	}
+
+	rollbackPosition := domaintrip.RestorePosition(
+		"", completedTrip.ID, domaintrip.Point{Latitude: 59.93, Longitude: 30.33},
+		recordedAt, now,
+	)
+	err := txManager.Do(ctx, func(ctx context.Context) error {
+		return repo.SavePosition(ctx, rollbackPosition)
+	})
+	if !errors.Is(err, domaintrip.ErrTripCompleted) {
+		t.Fatalf("SavePosition(completed trip) error = %v, want %v", err, domaintrip.ErrTripCompleted)
+	}
+
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM trip_positions WHERE trip_id = $1", completedTrip.ID).Scan(&positionCount); err != nil {
+		t.Fatalf("count positions after failed save: %v", err)
+	}
+	if positionCount != 0 {
+		t.Fatalf("positions persisted after failed save = %d, want 0", positionCount)
+	}
+	if err := pool.QueryRow(ctx, "SELECT last_position_at FROM trips WHERE id = $1", completedTrip.ID).Scan(&lastPositionAt); err != nil {
+		t.Fatalf("read completed trip last_position_at: %v", err)
+	}
+	if lastPositionAt.Valid {
+		t.Fatalf("last_position_at persisted after failed save = %v, want NULL", lastPositionAt)
+	}
+}
+
+func newPositionTestTrip(id, driverID string, startedAt time.Time) *domaintrip.Trip {
+	return &domaintrip.Trip{
+		ID:         id,
+		UserID:     integrationUserID,
+		DriverID:   driverID,
+		Status:     domaintrip.StatusActive,
+		Price:      500,
+		StartPoint: domaintrip.Point{Latitude: 11, Longitude: 12},
+		EndPoint:   domaintrip.Point{Latitude: 13, Longitude: 14},
+		StartedAt:  startedAt,
+	}
+}
+
 func setupIntegrationDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	t.Helper()
 	dbURL := os.Getenv("DATABASE_URL")
@@ -223,6 +451,8 @@ func setupIntegrationDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 		filepath.Join("..", "..", "..", "migrations", "00001_create_trips.sql"),
 		filepath.Join("..", "..", "..", "migrations", "00002_create_trip_status_history.sql"),
 		filepath.Join("..", "..", "..", "migrations", "00003_create_idempotency_keys.sql"),
+		filepath.Join("..", "..", "..", "migrations", "00004_add_column_create_trip_positions.sql"),
+		filepath.Join("..", "..", "..", "migrations", "00005_add_trip_stale_index.sql"),
 	} {
 		content, err := os.ReadFile(migrationPath)
 		if err != nil {
@@ -231,6 +461,9 @@ func setupIntegrationDB(t *testing.T, ctx context.Context) *pgxpool.Pool {
 		upSQL, _, hasDownSection := strings.Cut(string(content), "-- +goose Down")
 		if !hasDownSection {
 			t.Fatalf("migration %s has no goose Down marker", migrationPath)
+		}
+		if _, noTransactionSQL, hasNoTransaction := strings.Cut(upSQL, "-- +goose NO TRANSACTION"); hasNoTransaction {
+			upSQL = noTransactionSQL
 		}
 		if _, err := pool.Exec(ctx, upSQL); err != nil {
 			t.Fatalf("apply migration %s: %v", migrationPath, err)
@@ -538,6 +771,6 @@ type finishMetrics struct{}
 
 type idempotencyTestMetrics struct{}
 
-func (idempotencyTestMetrics) TripCreated() {}
+func (idempotencyTestMetrics) TripCreated(context.Context) {}
 
-func (*finishMetrics) TripCompleted() {}
+func (*finishMetrics) TripCompleted(context.Context) {}

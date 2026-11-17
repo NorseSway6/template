@@ -38,7 +38,7 @@ func (u *Usecase) Do(ctx context.Context, in model.CreateTripInput) (*trip.Trip,
 		return nil, err
 	}
 
-	u.metrics.TripCreated()
+	u.metrics.TripCreated(ctx)
 	u.logger.InfoContext(ctx, "trip created",
 		"event", "trip.created",
 		"trip_id", t.ID,

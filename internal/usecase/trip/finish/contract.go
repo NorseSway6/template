@@ -19,6 +19,6 @@ type (
 	}
 
 	metrics interface {
-		TripCompleted()
+		TripCompleted(ctx context.Context)
 	}
 )

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
@@ -19,11 +20,11 @@ func (r *Repository) Create(ctx context.Context, t *trip.Trip) error {
 	defer cancel()
 
 	exec := transaction.GetExecutor(ctx, r.pool)
-	row := toDomain(t)
+	row := fromDomain(t)
 
 	query, args, err := r.sq.Insert("trips").
 		Columns("id", "user_id", "driver_id", "start_latitude", "start_longitude",
-			"end_latitude", "end_longitude", "price", "status", "started_at").
+			"end_latitude", "end_longitude", "price", statusColumn, "started_at").
 		Values(row.ID, row.UserID, row.DriverID, row.StartLatitude, row.StartLongitude,
 			row.EndLatitude, row.EndLongitude, row.Price, row.Status, row.StartedAt).
 		ToSql()
@@ -50,10 +51,10 @@ func (r *Repository) Save(ctx context.Context, t *trip.Trip) error {
 	exec := transaction.GetExecutor(ctx, r.pool)
 
 	query, args, err := r.sq.Update("trips").
-		Set("status", t.Status).
+		Set(statusColumn, t.Status).
 		Set("finished_at", t.FinishedAt).
 		Set("updated_at", t.UpdatedAt).
-		Where(squirrel.Eq{"id": t.ID, "status": trip.StatusActive}).
+		Where(squirrel.Eq{"id": t.ID, statusColumn: trip.StatusActive}).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build update trip sql: %w", err)
@@ -65,7 +66,7 @@ func (r *Repository) Save(ctx context.Context, t *trip.Trip) error {
 	}
 
 	if tag.RowsAffected() == 0 {
-		selectQuery, selectArgs, err := r.sq.Select("status").
+		selectQuery, selectArgs, err := r.sq.Select(statusColumn).
 			From("trips").
 			Where(squirrel.Eq{"id": t.ID}).
 			ToSql()
@@ -89,6 +90,73 @@ func (r *Repository) Save(ctx context.Context, t *trip.Trip) error {
 
 	from := trip.StatusActive
 	return r.insertHistory(ctx, exec, t.ID, &from, t.Status, "trip finished")
+}
+
+// SavePosition сохраняет позицию поездки в базе данных.
+func (r *Repository) SavePosition(ctx context.Context, p *trip.Position) error {
+	ctx, cancel := transaction.WithQueryTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	exec := transaction.GetExecutor(ctx, r.pool)
+	row := fromDomainPosition(p)
+
+	query, args, err := r.sq.Insert("trip_positions").
+		Columns("trip_id", "latitude", "longitude", "recorded_at").
+		Values(row.TripID, row.Latitude, row.Longitude, row.RecordedAt).
+		Suffix("RETURNING id, created_at").
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build insert position sql: %w", err)
+	}
+
+	if err := exec.QueryRow(ctx, query, args...).Scan(&p.ID, &p.CreatedAt); err != nil {
+		return fmt.Errorf("insert position: %w", err)
+	}
+
+	query, args, err = r.sq.Update("trips").
+		Set("last_position_at", squirrel.Expr("GREATEST(COALESCE(last_position_at, ?), ?)", row.RecordedAt, row.RecordedAt)).
+		Where(squirrel.Eq{"id": row.TripID, statusColumn: trip.StatusActive}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update last_position_at sql: %w", err)
+	}
+
+	tag, err := exec.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("update last_position_at: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return trip.ErrTripCompleted
+	}
+
+	return nil
+}
+
+// UpdateLastPositionAt обновляет поле last_position_at в таблице trips.
+func (r *Repository) UpdateLastPositionAt(ctx context.Context, tripID string, lastPosAt time.Time) error {
+	ctx, cancel := transaction.WithQueryTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	exec := transaction.GetExecutor(ctx, r.pool)
+
+	query, args, err := r.sq.Update("trips").
+		Set("last_position_at", lastPosAt).
+		Where(squirrel.Eq{"id": tripID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update last_position_at sql: %w", err)
+	}
+
+	tag, err := exec.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("execute update last_position_at: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return trip.ErrTripNotFound
+	}
+
+	return nil
 }
 
 // insertHistory добавляет запись в журнал переходов статуса поездки.

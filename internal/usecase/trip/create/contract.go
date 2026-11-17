@@ -18,6 +18,6 @@ type (
 	}
 
 	metrics interface {
-		TripCreated()
+		TripCreated(ctx context.Context)
 	}
 )
