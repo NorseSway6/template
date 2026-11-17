@@ -212,6 +212,8 @@ func TestScannerStopsWhenQueueFills(t *testing.T) {
 		Return(trips, nil)
 	queueMetrics.EXPECT().QueueSize(int64(1))
 	metrics.EXPECT().StaleCheck(gomock.Any(), string(ResultQueued))
+	metrics.EXPECT().StaleCheck(gomock.Any(), string(ResultDropped))
+	metrics.EXPECT().PositionRequestDropped(gomock.Any())
 	metrics.EXPECT().ScanRows(gomock.Any(), int64(2)).Do(func(_ context.Context, rows int64) {
 		scanDone <- rows
 	})

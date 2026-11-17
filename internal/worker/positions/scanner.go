@@ -151,6 +151,17 @@ func (s *Scanner) scan(ctx context.Context) {
 					"trip_id", staleTrip.ID)
 			}
 			if s.queue.Full() {
+				droppedTrips := trips[i+1:]
+				for range droppedTrips {
+					s.metrics.StaleCheck(ctx, string(ResultDropped))
+					s.metrics.PositionRequestDropped(ctx)
+				}
+				if len(droppedTrips) > 0 {
+					s.logger.WarnContext(ctx, "position queue full, remaining trips in batch dropped",
+						"dropped_count", len(droppedTrips),
+						"first_trip_id", droppedTrips[0].ID,
+					)
+				}
 				return
 			}
 			after = &staleTrip
