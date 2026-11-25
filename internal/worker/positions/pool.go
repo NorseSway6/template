@@ -81,15 +81,14 @@ func (p *Pool) Run(ctx context.Context) {
 
 // runWorker запускает воркер, который извлекает устаревшие поездки из очереди и обрабатывает их.
 func (p *Pool) runWorker(ctx context.Context) {
-	p.metrics.WorkerActive(1)
-	defer p.metrics.WorkerActive(-1)
-
 	for {
 		e, ok := p.queue.Take(ctx)
 		if !ok {
 			return
 		}
+		p.metrics.WorkerActive(1)
 		p.handle(ctx, e)
+		p.metrics.WorkerActive(-1)
 	}
 }
 
@@ -106,11 +105,12 @@ func (p *Pool) handle(ctx context.Context, e entry) {
 
 	startedAt := time.Now()
 	err := p.gateway.RequestPosition(tctx, e.trip.ID, e.trip.DriverID)
-	p.metrics.PositionRequestDuration(ctx, time.Since(startedAt))
 	if err != nil {
+		p.metrics.PositionRequestDuration(ctx, time.Since(startedAt), "error")
 		p.metrics.PositionRequest(ctx, "error")
 		p.logger.WarnContext(ctx, "push request failed", "trip_id", e.trip.ID, "error", err)
 		return
 	}
+	p.metrics.PositionRequestDuration(ctx, time.Since(startedAt), "success")
 	p.metrics.PositionRequest(ctx, "success")
 }

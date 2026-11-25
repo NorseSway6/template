@@ -50,7 +50,7 @@ type (
 	poolMetrics interface {
 		WorkerActive(delta int64)
 		PositionRequest(ctx context.Context, result string)
-		PositionRequestDuration(ctx context.Context, duration time.Duration)
+		PositionRequestDuration(ctx context.Context, duration time.Duration, result string)
 	}
 
 	queueMetrics interface {

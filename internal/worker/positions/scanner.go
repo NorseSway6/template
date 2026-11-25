@@ -140,34 +140,29 @@ func (s *Scanner) scan(ctx context.Context) {
 
 			staleTrip := trips[i]
 			result := s.queue.TryEnqueue(staleTrip, checkSpan)
-			s.metrics.StaleCheck(ctx, string(result))
 			switch result {
+			case ResultDuplicate:
+				s.metrics.StaleCheck(ctx, string(ResultDuplicate))
+			case ResultQueued:
+				s.metrics.StaleCheck(ctx, string(ResultQueued))
 			case ResultDropped:
+				s.metrics.StaleCheck(ctx, string(ResultDropped))
 				s.metrics.PositionRequestDropped(ctx)
 				s.logger.WarnContext(ctx, "position queue full, trip dropped", "trip_id", staleTrip.ID)
 			case ResultReplaced:
+				s.metrics.StaleCheck(ctx, string(ResultQueued))
+				s.metrics.StaleCheck(ctx, string(ResultDropped))
 				s.metrics.PositionRequestDropped(ctx)
 				s.logger.WarnContext(ctx, "position queue full, fresher trip evicted for older trip",
 					"trip_id", staleTrip.ID)
 			}
-			if s.queue.Full() {
-				droppedTrips := trips[i+1:]
-				for range droppedTrips {
-					s.metrics.StaleCheck(ctx, string(ResultDropped))
-					s.metrics.PositionRequestDropped(ctx)
-				}
-				if len(droppedTrips) > 0 {
-					s.logger.WarnContext(ctx, "position queue full, remaining trips in batch dropped",
-						"dropped_count", len(droppedTrips),
-						"first_trip_id", droppedTrips[0].ID,
-					)
-				}
+			if s.queue.Full() && (result == ResultDropped || result == ResultReplaced) {
 				return
 			}
 			after = &staleTrip
 		}
 
-		if len(trips) < s.batchSize {
+		if len(trips) < s.batchSize || s.queue.Full() {
 			return
 		}
 	}

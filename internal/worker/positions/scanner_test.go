@@ -14,6 +14,11 @@ import (
 	"github.com/NorseSway6/template.git/internal/model"
 )
 
+const (
+	scannerTripA = "trip-a"
+	scannerTripB = "trip-b"
+)
+
 const scannerTestBatchSize = 100
 
 func TestScannerRunsOnTickAndRecordsDroppedTrip(t *testing.T) {
@@ -248,9 +253,6 @@ func TestScannerStopsWhenQueueFills(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("scanner did not stop after filling the queue")
 	}
-	if got := queue.TryEnqueue(trips[1], trace.SpanContext{}); got != ResultDropped {
-		t.Fatalf("TryEnqueue() after scan = %q, want %q", got, ResultDropped)
-	}
 
 	cancel()
 	select {
@@ -259,6 +261,167 @@ func TestScannerStopsWhenQueueFills(t *testing.T) {
 		t.Fatal("scanner did not stop after context cancellation")
 	}
 	queue.Close()
+}
+
+func TestScannerRecordsBothDuplicatesWhenQueueIsFull(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	source := NewMocktripSource(ctrl)
+	ticker := NewMockticker(ctrl)
+	metrics := NewMockscannerMetrics(ctrl)
+	queueMetrics := NewMockqueueMetrics(ctrl)
+	ticks := make(chan time.Time)
+	scanDone := make(chan struct{}, 1)
+	trips := []model.StaleTrip{{ID: scannerTripA}, {ID: scannerTripB}}
+
+	ticker.EXPECT().C().AnyTimes().Return(ticks)
+	ticker.EXPECT().Stop()
+	source.EXPECT().ListStaleBatch(gomock.Any(), time.Minute, nil, scannerTestBatchSize).
+		Return(trips, nil)
+	queueMetrics.EXPECT().QueueSize(int64(1)).Times(2)
+	queueMetrics.EXPECT().QueueSize(int64(-1)).Times(2)
+	for range trips {
+		metrics.EXPECT().StaleCheck(gomock.Any(), string(ResultDuplicate))
+	}
+	metrics.EXPECT().ScanRows(gomock.Any(), int64(len(trips))).Do(func(context.Context, int64) {
+		scanDone <- struct{}{}
+	})
+
+	queue, err := NewQueue(len(trips), queueMetrics)
+	if err != nil {
+		t.Fatalf("NewQueue() error = %v", err)
+	}
+	for _, staleTrip := range trips {
+		if got := queue.TryEnqueue(staleTrip, trace.SpanContext{}); got != ResultQueued {
+			t.Fatalf("TryEnqueue(%q) = %q, want %q", staleTrip.ID, got, ResultQueued)
+		}
+	}
+	scanner, err := NewScanner(
+		source,
+		queue,
+		ticker,
+		time.Minute,
+		scannerTestBatchSize,
+		metrics,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewScanner() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		scanner.Run(ctx)
+	}()
+	ticks <- time.Now()
+	select {
+	case <-scanDone:
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not finish duplicate batch")
+	}
+
+	for _, want := range trips {
+		item, ok := queue.Take(context.Background())
+		if !ok {
+			t.Fatalf("queue did not retain trip %q", want.ID)
+		}
+		if item.trip.ID != want.ID {
+			t.Fatalf("Take() trip ID = %q, want %q", item.trip.ID, want.ID)
+		}
+		queue.Done(item)
+	}
+	queue.Close()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not stop after context cancellation")
+	}
+}
+
+func TestScannerCountsReplacedTripAsQueuedAndEvictionAsDropped(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	source := NewMocktripSource(ctrl)
+	ticker := NewMockticker(ctrl)
+	metrics := NewMockscannerMetrics(ctrl)
+	queueMetrics := NewMockqueueMetrics(ctrl)
+	ticks := make(chan time.Time)
+	scanDone := make(chan struct{}, 1)
+	base := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	staleTrips := []model.StaleTrip{
+		{ID: "trip-b", StaleSince: base.Add(-time.Hour)},
+		{ID: "trip-c", StaleSince: base},
+	}
+	olderTrip := model.StaleTrip{ID: "trip-a", StaleSince: base.Add(-2 * time.Hour)}
+
+	ticker.EXPECT().C().AnyTimes().Return(ticks)
+	ticker.EXPECT().Stop()
+	source.EXPECT().ListStaleBatch(gomock.Any(), time.Minute, nil, scannerTestBatchSize).
+		Return([]model.StaleTrip{olderTrip}, nil)
+	queueMetrics.EXPECT().QueueSize(int64(1)).Times(2)
+	queueMetrics.EXPECT().QueueSize(int64(-1)).Times(2)
+	metrics.EXPECT().StaleCheck(gomock.Any(), string(ResultQueued))
+	metrics.EXPECT().StaleCheck(gomock.Any(), string(ResultDropped))
+	metrics.EXPECT().PositionRequestDropped(gomock.Any())
+	metrics.EXPECT().ScanRows(gomock.Any(), int64(1)).Do(func(context.Context, int64) {
+		scanDone <- struct{}{}
+	})
+
+	queue, err := NewQueue(2, queueMetrics)
+	if err != nil {
+		t.Fatalf("NewQueue() error = %v", err)
+	}
+	for _, staleTrip := range staleTrips {
+		if got := queue.TryEnqueue(staleTrip, trace.SpanContext{}); got != ResultQueued {
+			t.Fatalf("TryEnqueue(%q) = %q, want %q", staleTrip.ID, got, ResultQueued)
+		}
+	}
+	scanner, err := NewScanner(
+		source,
+		queue,
+		ticker,
+		time.Minute,
+		scannerTestBatchSize,
+		metrics,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewScanner() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		scanner.Run(ctx)
+	}()
+	ticks <- time.Now()
+	select {
+	case <-scanDone:
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not finish replacement batch")
+	}
+
+	for _, wantID := range []string{scannerTripA, scannerTripB} {
+		item, ok := queue.Take(context.Background())
+		if !ok {
+			t.Fatalf("queue did not contain trip %q", wantID)
+		}
+		if item.trip.ID != wantID {
+			t.Fatalf("Take() trip ID = %q, want %q", item.trip.ID, wantID)
+		}
+		queue.Done(item)
+	}
+	queue.Close()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scanner did not stop after context cancellation")
+	}
 }
 
 func TestScannerReadsAllStaleTripsInKeysetBatches(t *testing.T) {

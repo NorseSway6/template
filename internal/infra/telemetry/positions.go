@@ -78,8 +78,8 @@ func (m *PositionMetrics) PositionRequest(ctx context.Context, result string) {
 	m.positionRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("result", result)))
 }
 
-func (m *PositionMetrics) PositionRequestDuration(ctx context.Context, duration time.Duration) {
-	m.requestDuration.Record(ctx, duration.Seconds())
+func (m *PositionMetrics) PositionRequestDuration(ctx context.Context, duration time.Duration, result string) {
+	m.requestDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(attribute.String("result", result)))
 }
 
 func (m *PositionMetrics) PositionSaved(ctx context.Context) {

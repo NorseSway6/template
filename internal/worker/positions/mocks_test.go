@@ -374,15 +374,15 @@ func (mr *MockpoolMetricsMockRecorder) PositionRequest(ctx, result any) *gomock.
 }
 
 // PositionRequestDuration mocks base method.
-func (m *MockpoolMetrics) PositionRequestDuration(ctx context.Context, duration time.Duration) {
+func (m *MockpoolMetrics) PositionRequestDuration(ctx context.Context, duration time.Duration, result string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PositionRequestDuration", ctx, duration)
+	m.ctrl.Call(m, "PositionRequestDuration", ctx, duration, result)
 }
 
 // PositionRequestDuration indicates an expected call of PositionRequestDuration.
-func (mr *MockpoolMetricsMockRecorder) PositionRequestDuration(ctx, duration any) *gomock.Call {
+func (mr *MockpoolMetricsMockRecorder) PositionRequestDuration(ctx, duration, result any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PositionRequestDuration", reflect.TypeOf((*MockpoolMetrics)(nil).PositionRequestDuration), ctx, duration)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PositionRequestDuration", reflect.TypeOf((*MockpoolMetrics)(nil).PositionRequestDuration), ctx, duration, result)
 }
 
 // WorkerActive mocks base method.

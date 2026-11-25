@@ -18,11 +18,6 @@ type Handler struct {
 	cancel queueCanceller
 }
 
-type createPositionRequest struct {
-	Coordinates *coordinatesRequest `json:"coordinates"`
-	RecordedAt  *time.Time          `json:"recorded_at"`
-}
-
 type coordinatesRequest struct {
 	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
@@ -59,13 +54,18 @@ func (h *Handler) CreatePosition(w http.ResponseWriter, r *http.Request, id api.
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// decodeRequest декодирует тело запроса в структуру createPositionRequest.
+// decodeRequest декодирует тело запроса, проверяя точное написание полей.
 func decodeRequest(r *http.Request) (api.CreateTripPositionJSONRequestBody, error) {
-	var input createPositionRequest
+	var rawRequest map[string]json.RawMessage
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
+	if err := decoder.Decode(&rawRequest); err != nil {
 		return api.CreateTripPositionJSONRequestBody{}, err
+	}
+
+	for field := range rawRequest {
+		if field != "coordinates" && field != "recorded_at" {
+			return api.CreateTripPositionJSONRequestBody{}, errors.New("request body contains an unknown field")
+		}
 	}
 
 	var trailing any
@@ -75,16 +75,40 @@ func decodeRequest(r *http.Request) (api.CreateTripPositionJSONRequestBody, erro
 		}
 		return api.CreateTripPositionJSONRequestBody{}, err
 	}
-	if input.Coordinates == nil || input.Coordinates.Latitude == nil ||
-		input.Coordinates.Longitude == nil || input.RecordedAt == nil {
+
+	coordinatesRaw, hasCoordinates := rawRequest["coordinates"]
+	recordedAtRaw, hasRecordedAt := rawRequest["recorded_at"]
+	if !hasCoordinates || !hasRecordedAt {
+		return api.CreateTripPositionJSONRequestBody{}, errors.New("request body is missing required fields")
+	}
+
+	var rawCoordinates map[string]json.RawMessage
+	if err := json.Unmarshal(coordinatesRaw, &rawCoordinates); err != nil {
+		return api.CreateTripPositionJSONRequestBody{}, err
+	}
+	for field := range rawCoordinates {
+		if field != "latitude" && field != "longitude" {
+			return api.CreateTripPositionJSONRequestBody{}, errors.New("coordinates contains an unknown field")
+		}
+	}
+
+	var coordinates coordinatesRequest
+	if err := json.Unmarshal(coordinatesRaw, &coordinates); err != nil {
+		return api.CreateTripPositionJSONRequestBody{}, err
+	}
+	var recordedAt *time.Time
+	if err := json.Unmarshal(recordedAtRaw, &recordedAt); err != nil {
+		return api.CreateTripPositionJSONRequestBody{}, err
+	}
+	if coordinates.Latitude == nil || coordinates.Longitude == nil || recordedAt == nil {
 		return api.CreateTripPositionJSONRequestBody{}, errors.New("request body is missing required fields")
 	}
 
 	return api.CreateTripPositionJSONRequestBody{
 		Coordinates: api.Coordinates{
-			Latitude:  *input.Coordinates.Latitude,
-			Longitude: *input.Coordinates.Longitude,
+			Latitude:  *coordinates.Latitude,
+			Longitude: *coordinates.Longitude,
 		},
-		RecordedAt: *input.RecordedAt,
+		RecordedAt: *recordedAt,
 	}, nil
 }
