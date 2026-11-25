@@ -20,17 +20,18 @@ type Point struct {
 
 // Trip представляет модель данных для таблицы trips.
 type Trip struct {
-	ID         string
-	UserID     string
-	DriverID   string
-	Status     string
-	Price      int64
-	StartPoint Point
-	EndPoint   Point
-	StartedAt  time.Time
-	FinishedAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID             string
+	UserID         string
+	DriverID       string
+	Status         string
+	Price          int64
+	StartPoint     Point
+	EndPoint       Point
+	StartedAt      time.Time
+	FinishedAt     *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	LastPositionAt *time.Time
 }
 
 // New создает новый экземпляр Trip с валидацией входных данных.
@@ -60,14 +61,15 @@ func New(id, userId, driverId string, price int64, startPoint, endPoint Point, s
 	}
 
 	return &Trip{
-		ID:         id,
-		UserID:     userId,
-		DriverID:   driverId,
-		Status:     StatusActive,
-		Price:      price,
-		StartPoint: startPoint,
-		EndPoint:   endPoint,
-		StartedAt:  startedAt,
+		ID:             id,
+		UserID:         userId,
+		DriverID:       driverId,
+		Status:         StatusActive,
+		Price:          price,
+		StartPoint:     startPoint,
+		EndPoint:       endPoint,
+		StartedAt:      startedAt,
+		LastPositionAt: &startedAt,
 	}, nil
 }
 
@@ -76,14 +78,14 @@ func Restore(
 	id, userID, driverID, status string,
 	price int64,
 	startPoint, endPoint Point,
-	startedAt time.Time, finishedAt *time.Time,
+	startedAt time.Time, finishedAt, lastPosAt *time.Time,
 	createdAt, updatedAt time.Time,
 ) *Trip {
 	return &Trip{
 		ID: id, UserID: userID, DriverID: driverID, Status: status, Price: price,
 		StartPoint: startPoint, EndPoint: endPoint,
 		StartedAt: startedAt, FinishedAt: finishedAt,
-		CreatedAt: createdAt, UpdatedAt: updatedAt,
+		CreatedAt: createdAt, UpdatedAt: updatedAt, LastPositionAt: lastPosAt,
 	}
 }
 
@@ -95,6 +97,13 @@ func (t *Trip) Finish(at time.Time) error {
 	t.Status = StatusCompleted
 	t.FinishedAt = &at
 	t.UpdatedAt = at
+	return nil
+}
+
+func (t *Trip) CheckAcceptsPositions() error {
+	if t.Status == StatusCompleted {
+		return ErrTripCompleted
+	}
 	return nil
 }
 

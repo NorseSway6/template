@@ -45,7 +45,7 @@ func (u *Usecase) Do(ctx context.Context, tripID string) (*trip.Trip, error) {
 	})
 
 	if err == nil {
-		u.metrics.TripCompleted()
+		u.metrics.TripCompleted(ctx)
 		u.logger.InfoContext(ctx, "trip completed",
 			"event", "trip.completed",
 			"trip_id", finishedTrip.ID,

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -43,9 +42,7 @@ func Setup(ctx context.Context, defaultName string) (_ *slog.Logger, shutdown fu
 	}
 	defer func() {
 		if err != nil {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			err = errors.Join(err, shutdown(cleanupCtx))
+			err = errors.Join(err, shutdown(context.WithoutCancel(ctx)))
 		}
 	}()
 	if levelErr != nil {
@@ -67,17 +64,17 @@ func Setup(ctx context.Context, defaultName string) (_ *slog.Logger, shutdown fu
 	if err != nil {
 		return logger, shutdown, err
 	}
-	traceExporter, err := otlptracehttp.New(ctx, otlptracehttp.WithTimeout(2*time.Second))
+	traceExporter, err := otlptracehttp.New(ctx)
 	if err != nil {
 		return logger, shutdown, err
 	}
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
-		sdktrace.WithBatcher(traceExporter, sdktrace.WithBatchTimeout(time.Second)),
+		sdktrace.WithBatcher(traceExporter),
 	)
 	closers = append(closers, tp.Shutdown)
 
-	metricExporter, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithTimeout(2*time.Second))
+	metricExporter, err := otlpmetrichttp.New(ctx)
 	if err != nil {
 		return logger, shutdown, err
 	}

@@ -133,13 +133,13 @@ func (m *Mockmetrics) EXPECT() *MockmetricsMockRecorder {
 }
 
 // TripCompleted mocks base method.
-func (m *Mockmetrics) TripCompleted() {
+func (m *Mockmetrics) TripCompleted(ctx context.Context) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "TripCompleted")
+	m.ctrl.Call(m, "TripCompleted", ctx)
 }
 
 // TripCompleted indicates an expected call of TripCompleted.
-func (mr *MockmetricsMockRecorder) TripCompleted() *gomock.Call {
+func (mr *MockmetricsMockRecorder) TripCompleted(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TripCompleted", reflect.TypeOf((*Mockmetrics)(nil).TripCompleted))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TripCompleted", reflect.TypeOf((*Mockmetrics)(nil).TripCompleted), ctx)
 }

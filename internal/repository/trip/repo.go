@@ -7,6 +7,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// statusColumn представляет имя колонки в таблице trips, которая хранит статус поездки.
+const statusColumn = "status"
+
 // Repository реализует работу с таблицами trips и trip_status_history.
 type Repository struct {
 	pool         *pgxpool.Pool

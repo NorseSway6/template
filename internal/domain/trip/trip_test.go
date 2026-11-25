@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	testTripID   = "33333333-3333-3333-3333-333333333333"
-	testUserID   = "11111111-1111-1111-1111-111111111111"
-	testDriverID = "22222222-2222-2222-2222-222222222222"
+	testTripID             = "33333333-3333-3333-3333-333333333333"
+	testUserID             = "11111111-1111-1111-1111-111111111111"
+	testDriverID           = "22222222-2222-2222-2222-222222222222"
+	coordinateBoundsReason = "coordinates out of bounds"
 )
 
 func TestTripNew(t *testing.T) {
@@ -77,7 +78,7 @@ func TestTripNew(t *testing.T) {
 			end:        Point{Latitude: 1, Longitude: 1},
 			wantErr:    true,
 			wantField:  "start_point",
-			wantReason: "coordinates out of bounds",
+			wantReason: coordinateBoundsReason,
 		},
 		{
 			name:       "invalid end longitude",
@@ -218,4 +219,28 @@ func TestTripFinish(t *testing.T) {
 			t.Fatalf("Finish() error = %v, want %v", err, ErrTripCompleted)
 		}
 	})
+}
+
+func TestTripCheckAcceptsPositions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		status  string
+		wantErr error
+	}{
+		{name: "active trip accepts positions", status: StatusActive},
+		{name: "completed trip rejects positions", status: StatusCompleted, wantErr: ErrTripCompleted},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			trip := &Trip{Status: tt.status}
+			if err := trip.CheckAcceptsPositions(); err != tt.wantErr {
+				t.Fatalf("CheckAcceptsPositions() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
 }
